@@ -27,6 +27,11 @@ __all__ = [
     "make_vec_async",
     "make_vec_sync",
     "CombatPPOAgent",
+    "PPOConfig",
+    "compute_log_prob_and_entropy",
+    "ppo_update",
+    "get_card_mask",
+    "mask_logits",
 ]
 
 
@@ -35,4 +40,17 @@ def __getattr__(name: str):
         from .model import CombatPPOAgent
 
         return CombatPPOAgent
+    if name == "PPOConfig":
+        from .ppo_config import PPOConfig
+
+        return PPOConfig
+    if name in (
+        "compute_log_prob_and_entropy",
+        "ppo_update",
+        "get_card_mask",
+        "mask_logits",
+    ):
+        from . import ppo as _ppo
+
+        return getattr(_ppo, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
