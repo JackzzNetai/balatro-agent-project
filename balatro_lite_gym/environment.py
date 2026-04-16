@@ -295,6 +295,9 @@ class BalatroEnv(Env):
 
     **``info``:** ``reset`` and ``step`` return ``info["snapshot"]`` — the live
     :class:`~engine.GameSnapshot` (same object as ``_snapshot`` after the transition).
+    On **terminal** steps only, ``info`` also contains ``combat_won`` (``True`` if the
+    blind was beaten, ``False`` on terminal loss). Non-terminal steps and ``reset``
+    return only ``snapshot``.
     """
 
     metadata = {"render_modes": []}
@@ -312,8 +315,11 @@ class BalatroEnv(Env):
         self._snapshot: GameSnapshot = snapshot
         super().reset(seed=_resolve_seed(None), options=None)
 
-    def _info(self) -> dict:
-        return {"snapshot": self._snapshot}
+    def _info(self, *, terminal: bool = False, combat_won: bool = False) -> dict:
+        out: dict = {"snapshot": self._snapshot}
+        if terminal:
+            out["combat_won"] = bool(combat_won)
+        return out
 
     def _get_obs(self) -> dict:
         return snapshot_to_obs_dict(self._snapshot)
@@ -364,17 +370,16 @@ class BalatroEnv(Env):
         else:
             snap.discard_remaining -= 1
 
-        terminated = (
-            snap.current_score >= snap.target_score or snap.play_remaining == 0
-        )
-        if not terminated:
-            _draw_until_hand_size(
-                hand, snap.deck, snap.player_hand_size, self.np_random
-            )
-
+        reached_target = snap.current_score >= snap.target_score
+        terminated = reached_target or snap.play_remaining == 0
         if terminated:
             reward = _terminal_reward(snap.play_remaining, snap.current_score)
         else:
+            _draw_until_hand_size(
+                hand, snap.deck, snap.player_hand_size, self.np_random
+            )
             reward = 0.0
 
-        return self._get_obs(), reward, terminated, False, self._info()
+        return self._get_obs(), reward, terminated, False, self._info(
+            terminal=terminated, combat_won=reached_target
+        )
