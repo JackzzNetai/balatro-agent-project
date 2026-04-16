@@ -292,6 +292,9 @@ class BalatroEnv(Env):
     ``_init_snapshot_template = deepcopy(S)``, ``_snapshot = S`` (reference). Omit
     snapshot or pass ``None`` to set ``_snapshot = deepcopy(_init_snapshot_template)``
     (fresh episode from the last installed template, or the constructor baseline).
+
+    **``info``:** ``reset`` and ``step`` return ``info["snapshot"]`` — the live
+    :class:`~engine.GameSnapshot` (same object as ``_snapshot`` after the transition).
     """
 
     metadata = {"render_modes": []}
@@ -309,6 +312,15 @@ class BalatroEnv(Env):
         self._snapshot: GameSnapshot = snapshot
         super().reset(seed=_resolve_seed(None), options=None)
 
+    def _info(self) -> dict:
+        return {"snapshot": self._snapshot}
+
+    def _get_obs(self) -> dict:
+        return snapshot_to_obs_dict(self._snapshot)
+
+    def _calculate_score(self, selected_cards: list[Card]) -> int:
+        return score_play(selected_cards, self._snapshot, self.np_random)
+
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         opts = options or {}
         resolved = _resolve_seed(seed)
@@ -319,13 +331,7 @@ class BalatroEnv(Env):
             self._snapshot = src
         else:
             self._snapshot = copy.deepcopy(self._init_snapshot_template)
-        return self._get_obs(), {}
-
-    def _get_obs(self) -> dict:
-        return snapshot_to_obs_dict(self._snapshot)
-
-    def _calculate_score(self, selected_cards: list[Card]) -> int:
-        return score_play(selected_cards, self._snapshot, self.np_random)
+        return self._get_obs(), self._info()
 
     def step(self, action):
         selection = action["selection"]
@@ -335,7 +341,7 @@ class BalatroEnv(Env):
         indices = _selected_indices(selection, len(hand))
 
         if _is_invalid_selection(indices):
-            return self._get_obs(), -1, False, False, {}
+            return self._get_obs(), -1, False, False, self._info()
 
         if action_type == 1:
             if snap.play_remaining == 0:
@@ -344,7 +350,7 @@ class BalatroEnv(Env):
                 )
         elif action_type == 0:
             if snap.discard_remaining == 0:
-                return self._get_obs(), -1, False, False, {}
+                return self._get_obs(), -1, False, False, self._info()
         else:
             raise ValueError(f"invalid action_type: {action_type!r}")
 
@@ -371,4 +377,4 @@ class BalatroEnv(Env):
         else:
             reward = 0.0
 
-        return self._get_obs(), reward, terminated, False, {}
+        return self._get_obs(), reward, terminated, False, self._info()

@@ -7,7 +7,7 @@ from utils import minimal_snapshot
 def test_reset_observation_is_in_space():
     env = BalatroEnv(minimal_snapshot())
     obs, info = env.reset(seed=0)
-    assert info == {}
+    assert info["snapshot"] is env._snapshot
     assert env.observation_space.contains(obs)
 
 

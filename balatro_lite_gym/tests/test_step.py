@@ -42,7 +42,7 @@ def test_invalid_selection_no_op_reward_minus_one_terminated_false():
     assert r == -1
     assert term is False
     assert trunc is False
-    assert info == {}
+    assert info["snapshot"] is env._snapshot
     assert (env._snapshot.current_score, len(env._snapshot.hand)) == before
     assert env.observation_space.contains(obs)
 
@@ -69,7 +69,7 @@ def test_valid_discard_removes_and_draws():
     )
     assert r == 0
     assert trunc is False
-    assert info == {}
+    assert info["snapshot"] is env._snapshot
     assert env._snapshot.discard_remaining == 2
     assert len(env._snapshot.hand) == 3
     assert len(env._snapshot.deck) == 1
@@ -101,7 +101,7 @@ def test_valid_play_terminated_skips_draw():
     assert r == pytest.approx(0.0 + math.sqrt(math.log10(116.0)))
     assert term is True
     assert trunc is False
-    assert info == {}
+    assert info["snapshot"] is env._snapshot
     assert env._snapshot.play_remaining == 0
     assert len(env._snapshot.hand) == 4
     assert len(env._snapshot.deck) == 3
@@ -138,6 +138,7 @@ def test_terminated_by_score_reward_uses_play_remaining_and_log_score():
     assert env2._snapshot.play_remaining == 2
     expected = 2.0 + math.sqrt(math.log10(110.0))
     assert r == pytest.approx(expected)
+    assert info["snapshot"] is env2._snapshot
     assert env2.observation_space.contains(obs)
 
 
@@ -182,7 +183,7 @@ def test_discard_remaining_zero_no_op_like_invalid_selection():
     )
     assert r == -1
     assert term is False
-    assert info == {}
+    assert info["snapshot"] is env._snapshot
     assert (len(env._snapshot.hand), env._snapshot.discard_remaining) == before
     assert env.observation_space.contains(obs)
 
