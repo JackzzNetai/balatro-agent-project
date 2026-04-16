@@ -26,4 +26,13 @@ __all__ = [
     "make_vec",
     "make_vec_async",
     "make_vec_sync",
+    "CombatPPOAgent",
 ]
+
+
+def __getattr__(name: str):
+    if name == "CombatPPOAgent":
+        from .model import CombatPPOAgent
+
+        return CombatPPOAgent
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

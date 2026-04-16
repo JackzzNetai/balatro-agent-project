@@ -10,8 +10,14 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from defs import CARD_EDITION_HIGH, CARD_ENHANCEMENT_HIGH, HAND_TYPE_COUNT, JOKER_ID_HIGH
-from defs.bosses import BossBlind
+from defs import (
+    CARD_EDITION_HIGH,
+    CARD_ENHANCEMENT_HIGH,
+    HAND_TYPE_COUNT,
+    JOKER_EDITION_HIGH,
+    JOKER_ID_HIGH,
+)
+from defs.bosses import NO_BOSS_BLIND_ID, BossBlind
 from engine import GameSnapshot
 from environment import (
     CARD_ID_HIGH,
@@ -20,9 +26,6 @@ from environment import (
     MAX_JOKER_LENGTH,
     BalatroEnv,
 )
-
-# Reserved hand/deck seal channel in flat obs; lite snapshots do not populate it.
-CARD_SEAL_HIGH = 0
 
 
 def _batched(obs: dict, key: str) -> np.ndarray:
@@ -56,6 +59,7 @@ def adapt_lite_vector_obs(obs: dict) -> dict[str, np.ndarray]:
     deck_mask = _nested_batched(obs, "deck", "deck_mask")
 
     joker_ids = _nested_batched(obs, "jokers", "joker_ids")
+    joker_ed = _nested_batched(obs, "jokers", "joker_editions")
     joker_mask = _nested_batched(obs, "jokers", "joker_mask")
 
     def _col(key: str) -> np.ndarray:
@@ -68,16 +72,54 @@ def adapt_lite_vector_obs(obs: dict) -> dict[str, np.ndarray]:
     play_rem = _col("play_remaining")
     disc_rem = _col("discard_remaining")
 
+    n = hand_ids.shape[0]
+
     hl = np.asarray(obs["hand_levels"], dtype=np.int64)
     if hl.ndim == 2:
         hl = hl[np.newaxis, ...]
+    if hl.shape != (n, HAND_TYPE_COUNT, 2):
+        raise ValueError(
+            f"hand_levels must be (N, {HAND_TYPE_COUNT}, 2), got {hl.shape} with N={n}"
+        )
 
-    n = hand_ids.shape[0]
+    bid_flat = _squeeze_scalars(_batched(obs, "blind_id")).astype(np.int64)
+    if bid_flat.shape != (n,):
+        raise ValueError(f"blind_id batch shape {bid_flat.shape} != ({n},)")
+    for i, b in enumerate(bid_flat):
+        if b == NO_BOSS_BLIND_ID:
+            continue
+        if b < 0 or b > int(BossBlind.THE_PLANT):
+            raise ValueError(
+                f"blind_id[{i}]={b} invalid (expect {NO_BOSS_BLIND_ID} or 0..{int(BossBlind.THE_PLANT)})"
+            )
+
+    if hand_ids.shape[0] != deck_ids.shape[0] or hand_ids.shape[0] != joker_ids.shape[0]:
+        raise ValueError(
+            f"batch N mismatch: hand {hand_ids.shape[0]}, deck {deck_ids.shape[0]}, "
+            f"jokers {joker_ids.shape[0]}"
+        )
+    if np.any((hand_ids < 0) | (hand_ids > CARD_ID_HIGH)):
+        raise ValueError("hand_card_ids out of [0, CARD_ID_HIGH]")
+    if np.any((hand_enh < 0) | (hand_enh > CARD_ENHANCEMENT_HIGH)):
+        raise ValueError("hand_enhancements out of [0, CARD_ENHANCEMENT_HIGH]")
+    if np.any((hand_ed < 0) | (hand_ed > CARD_EDITION_HIGH)):
+        raise ValueError("hand_editions out of [0, CARD_EDITION_HIGH]")
+    if np.any((deck_ids < 0) | (deck_ids > CARD_ID_HIGH)):
+        raise ValueError("deck_card_ids out of [0, CARD_ID_HIGH]")
+    if np.any((deck_enh < 0) | (deck_enh > CARD_ENHANCEMENT_HIGH)):
+        raise ValueError("deck_enhancements out of [0, CARD_ENHANCEMENT_HIGH]")
+    if np.any((deck_ed < 0) | (deck_ed > CARD_EDITION_HIGH)):
+        raise ValueError("deck_editions out of [0, CARD_EDITION_HIGH]")
+    if np.any((joker_ids < 0) | (joker_ids > JOKER_ID_HIGH)):
+        raise ValueError("joker_ids out of [0, JOKER_ID_HIGH]")
+    if np.any((joker_ed < 0) | (joker_ed > JOKER_EDITION_HIGH)):
+        raise ValueError("joker_editions out of [0, JOKER_EDITION_HIGH]")
+
     hand_ids_out = hand_ids.astype(np.int64).copy()
-    hand_ids_out[hand_mask == 0] = -1
+    hand_ids_out[hand_mask == 0] = 0
 
     deck_ids_out = deck_ids.astype(np.int64).copy()
-    deck_ids_out[deck_mask == 0] = -1
+    deck_ids_out[deck_mask == 0] = 0
 
     pad_h = MAX_HAND_LENGTH - hand_ids_out.shape[1]
     if pad_h < 0:
@@ -87,7 +129,7 @@ def adapt_lite_vector_obs(obs: dict) -> dict[str, np.ndarray]:
     if pad_h > 0:
         z = np.zeros((n, pad_h), dtype=np.int64)
         m0 = np.zeros((n, pad_h), dtype=np.int64)
-        hand_ids_out = np.concatenate([hand_ids_out, z - 1], axis=1)
+        hand_ids_out = np.concatenate([hand_ids_out, z], axis=1)
         hand_enh = np.concatenate([hand_enh, m0], axis=1)
         hand_ed = np.concatenate([hand_ed, m0], axis=1)
         hand_mask = np.concatenate([hand_mask, m0], axis=1)
@@ -99,7 +141,7 @@ def adapt_lite_vector_obs(obs: dict) -> dict[str, np.ndarray]:
         )
     if pad_d > 0:
         z = np.zeros((n, pad_d), dtype=np.int64)
-        deck_ids_out = np.concatenate([deck_ids_out, z - 1], axis=1)
+        deck_ids_out = np.concatenate([deck_ids_out, z], axis=1)
         deck_enh = np.concatenate([deck_enh, z], axis=1)
         deck_ed = np.concatenate([deck_ed, z], axis=1)
         deck_mask = np.concatenate([deck_mask, z], axis=1)
@@ -110,6 +152,7 @@ def adapt_lite_vector_obs(obs: dict) -> dict[str, np.ndarray]:
     if pad_j > 0:
         z = np.zeros((n, pad_j), dtype=np.int64)
         joker_ids = np.concatenate([joker_ids, z], axis=1)
+        joker_ed = np.concatenate([joker_ed, z], axis=1)
         joker_mask = np.concatenate([joker_mask, z], axis=1)
 
     ht_ids = np.broadcast_to(
@@ -128,29 +171,29 @@ def adapt_lite_vector_obs(obs: dict) -> dict[str, np.ndarray]:
     boss_active = (blind_id >= 0).astype(np.int64)
     boss_slot_id = np.where(blind_id < 0, 0, blind_id).astype(np.int64)
 
-    money = np.zeros((n, 1), dtype=np.int64)
+    player_hand_size = _col("player_hand_size")
 
     return {
         "hand_card_ids": hand_ids_out,
         "hand_card_enhancements": hand_enh.astype(np.int64),
         "hand_card_editions": hand_ed.astype(np.int64),
-        "hand_card_seals": np.zeros((n, MAX_HAND_LENGTH), dtype=np.int64),
-        "hand_is_face_down": np.zeros((n, MAX_HAND_LENGTH), dtype=np.uint8),
+        "hand_card_mask": hand_mask.astype(np.uint8),
         "hand_is_debuffed": np.zeros((n, MAX_HAND_LENGTH), dtype=np.uint8),
         "deck_card_ids": deck_ids_out,
         "deck_card_enhancements": deck_enh.astype(np.int64),
         "deck_card_editions": deck_ed.astype(np.int64),
-        "deck_card_seals": np.zeros((n, MAX_DECK_LENGTH), dtype=np.int64),
+        "deck_card_mask": deck_mask.astype(np.uint8),
         "hands_remaining": play_rem,
         "discards_remaining": disc_rem,
-        "money": money,
+        "player_hand_size": player_hand_size,
         "current_score": current_score,
         "target_score": target_score,
         "hand_levels": hl_model,
         "boss_id": boss_slot_id,
         "boss_is_active": boss_active,
         "joker_ids": joker_ids.astype(np.int64),
-        "joker_is_empty": (1 - joker_mask.astype(np.uint8)).astype(np.uint8),
+        "joker_editions": joker_ed.astype(np.int64),
+        "joker_mask": joker_mask.astype(np.uint8),
     }
 
 
@@ -160,7 +203,7 @@ def build_training_observation_space() -> spaces.Dict:
     return spaces.Dict(
         {
             "hand_card_ids": spaces.Box(
-                -1, CARD_ID_HIGH, (MAX_HAND_LENGTH,), dtype=np.int64
+                0, CARD_ID_HIGH, (MAX_HAND_LENGTH,), dtype=np.int64
             ),
             "hand_card_enhancements": spaces.Box(
                 0, CARD_ENHANCEMENT_HIGH, (MAX_HAND_LENGTH,), dtype=np.int64
@@ -168,13 +211,10 @@ def build_training_observation_space() -> spaces.Dict:
             "hand_card_editions": spaces.Box(
                 0, CARD_EDITION_HIGH, (MAX_HAND_LENGTH,), dtype=np.int64
             ),
-            "hand_card_seals": spaces.Box(
-                0, CARD_SEAL_HIGH, (MAX_HAND_LENGTH,), dtype=np.int64
-            ),
-            "hand_is_face_down": spaces.MultiBinary(MAX_HAND_LENGTH),
+            "hand_card_mask": spaces.MultiBinary(MAX_HAND_LENGTH),
             "hand_is_debuffed": spaces.MultiBinary(MAX_HAND_LENGTH),
             "deck_card_ids": spaces.Box(
-                -1, CARD_ID_HIGH, (MAX_DECK_LENGTH,), dtype=np.int64
+                0, CARD_ID_HIGH, (MAX_DECK_LENGTH,), dtype=np.int64
             ),
             "deck_card_enhancements": spaces.Box(
                 0, CARD_ENHANCEMENT_HIGH, (MAX_DECK_LENGTH,), dtype=np.int64
@@ -182,12 +222,10 @@ def build_training_observation_space() -> spaces.Dict:
             "deck_card_editions": spaces.Box(
                 0, CARD_EDITION_HIGH, (MAX_DECK_LENGTH,), dtype=np.int64
             ),
-            "deck_card_seals": spaces.Box(
-                0, CARD_SEAL_HIGH, (MAX_DECK_LENGTH,), dtype=np.int64
-            ),
+            "deck_card_mask": spaces.MultiBinary(MAX_DECK_LENGTH),
             "hands_remaining": spaces.Box(0, _i64.max, (1,), dtype=np.int64),
             "discards_remaining": spaces.Box(0, _i64.max, (1,), dtype=np.int64),
-            "money": spaces.Box(_i64.min, _i64.max, (1,), dtype=np.int64),
+            "player_hand_size": spaces.Box(0, _i64.max, (1,), dtype=np.int64),
             "current_score": spaces.Box(0, _i64.max, (1,), dtype=np.int64),
             "target_score": spaces.Box(0, _i64.max, (1,), dtype=np.int64),
             "hand_levels": spaces.Box(
@@ -198,7 +236,10 @@ def build_training_observation_space() -> spaces.Dict:
             "joker_ids": spaces.Box(
                 0, JOKER_ID_HIGH, (MAX_JOKER_LENGTH,), dtype=np.int64
             ),
-            "joker_is_empty": spaces.MultiBinary(MAX_JOKER_LENGTH),
+            "joker_editions": spaces.Box(
+                0, JOKER_EDITION_HIGH, (MAX_JOKER_LENGTH,), dtype=np.int64
+            ),
+            "joker_mask": spaces.MultiBinary(MAX_JOKER_LENGTH),
         }
     )
 
@@ -400,6 +441,10 @@ class VecRolloutBuffer:
                 k: torch.zeros(self.T, self.N, *v.shape[1:], device=self.dev, dtype=v.dtype)
                 for k, v in obs_t.items()
             }
+        elif obs_t.keys() != self.obs.keys():
+            raise ValueError(
+                f"obs keys changed mid-rollout: {set(obs_t.keys())} vs {set(self.obs.keys())}"
+            )
         for k, v in obs_t.items():
             self.obs[k][t] = v.detach()
         self.card_sels[t] = card_sels.detach()
@@ -443,5 +488,13 @@ def compute_gae_vectorized(
             advantages[t] = last_gae
 
         returns = advantages + values
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        adv_c = advantages - advantages.mean()
+        std = adv_c.std()
+        if not torch.isfinite(std).all():
+            raise RuntimeError(
+                f"GAE advantages non-finite std after centering (std={std!r})"
+            )
+        # eps: stable divide when std is tiny; if advantages are constant, adv_c is all zero anyway.
+        _eps = 1e-8
+        advantages = adv_c / (std + _eps)
     return advantages, returns
