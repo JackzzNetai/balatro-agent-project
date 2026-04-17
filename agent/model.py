@@ -308,8 +308,8 @@ class CombatBackbone(nn.Module):
         depth_hand: int = 4,
         depth_mod: int = 3,
         depth_mod_run: int = 1,
-        depth_hm: int = 1,
-        depth_hc: int = 1,
+        depth_hm: int = 2,
+        depth_hc: int = 2,
     ):
         super().__init__()
 

@@ -459,11 +459,13 @@ class VecRolloutBuffer:
     def flatten(self):
         TN = self.T * self.N
         flat_obs = {k: v.reshape(TN, *v.shape[2:]) for k, v in self.obs.items()}
+        flat_values = self.values.reshape(TN)
         return (
             flat_obs,
             self.card_sels.reshape(TN, MAX_HAND_LENGTH),
             self.executions.reshape(TN),
             self.log_probs.reshape(TN),
+            flat_values,
         )
 
 

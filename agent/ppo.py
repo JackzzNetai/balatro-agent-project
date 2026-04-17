@@ -17,6 +17,7 @@ from .ppo_config import PPOConfig
 __all__ = [
     "get_card_mask",
     "mask_logits",
+    "clipped_value_function_loss",
     "compute_log_prob_and_entropy",
     "ppo_update",
 ]
@@ -32,6 +33,19 @@ def get_card_mask(obs_t: dict[str, Any]) -> torch.Tensor:
             f"hand_card_mask must be (B, {MAX_HAND_LENGTH}), got {tuple(m.shape)}"
         )
     return m
+
+
+def clipped_value_function_loss(
+    values: torch.Tensor,
+    old_values: torch.Tensor,
+    returns: torch.Tensor,
+    clip_eps: float,
+) -> torch.Tensor:
+    """PPO-style clipped value loss: max of unclipped vs clipped MSE to targets."""
+    clipped = old_values + (values - old_values).clamp(-clip_eps, clip_eps)
+    u = (returns - values) ** 2
+    c = (returns - clipped) ** 2
+    return torch.maximum(u, c).mean()
 
 
 def mask_logits(sel_logits: torch.Tensor, card_mask: torch.Tensor) -> torch.Tensor:
@@ -83,14 +97,23 @@ def ppo_update(
     card_sels: torch.Tensor,
     executions: torch.Tensor,
     old_log_probs: torch.Tensor,
+    old_values: torch.Tensor,
     advantages: torch.Tensor,
     returns: torch.Tensor,
     cfg: PPOConfig,
 ) -> dict[str, float]:
-    """PPO clipped surrogate over flattened rollout batch (B = T * N)."""
+    """PPO clipped surrogate over flattened rollout batch (B = T * N).
+
+    ``old_values`` are the value-head outputs at collection time (same indexing as
+    ``returns``). Used when ``cfg.clip_value_function`` is True for clipped VF loss.
+    """
     b = int(advantages.shape[0])
     if b == 0:
         raise ValueError("empty advantage batch")
+    if int(old_values.shape[0]) != b:
+        raise ValueError(
+            f"old_values batch {int(old_values.shape[0])} != advantage batch {b}"
+        )
     if b % cfg.num_minibatches != 0:
         raise ValueError(
             f"batch size {b} must be divisible by num_minibatches={cfg.num_minibatches}"
@@ -112,6 +135,7 @@ def ppo_update(
             mb_card_sels = card_sels[mb]
             mb_executions = executions[mb]
             mb_old_lp = old_log_probs[mb]
+            mb_old_vals = old_values[mb]
             mb_adv = advantages[mb]
             mb_ret = returns[mb]
 
@@ -125,7 +149,15 @@ def ppo_update(
                 torch.clamp(ratio, 1.0 - cfg.clip_eps, 1.0 + cfg.clip_eps) * mb_adv
             )
             pg_loss = -torch.min(surr1, surr2).mean()
-            value_loss = F.mse_loss(curr_values, mb_ret)
+            clip_vf = getattr(cfg, "clip_value_function", True)
+            vce = getattr(cfg, "value_clip_eps", None)
+            vf_eps = vce if vce is not None else cfg.clip_eps
+            if clip_vf:
+                value_loss = clipped_value_function_loss(
+                    curr_values, mb_old_vals, mb_ret, vf_eps
+                )
+            else:
+                value_loss = F.mse_loss(curr_values, mb_ret)
             ent_bonus = entropy.mean()
 
             loss = pg_loss + cfg.c_value * value_loss - cfg.c_entropy * ent_bonus

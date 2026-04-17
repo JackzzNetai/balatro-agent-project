@@ -60,7 +60,7 @@ def test_ppo_update_smoke():
         executions = torch.zeros(n, dtype=torch.long, device=dev)
 
         with torch.no_grad():
-            old_lp, _, _ = compute_log_prob_and_entropy(
+            old_lp, _, old_vals = compute_log_prob_and_entropy(
                 agent, obs_t, card_sels, executions
             )
 
@@ -74,6 +74,7 @@ def test_ppo_update_smoke():
             card_sels,
             executions,
             old_lp,
+            old_vals,
             advantages,
             returns,
             cfg,

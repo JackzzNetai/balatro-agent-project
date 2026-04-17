@@ -18,6 +18,9 @@ class PPOConfig:
     gamma: float = 1.0
     gae_lambda: float = 0.97
     clip_eps: float = 0.2
+    # If True, value loss uses max of squared error vs clipped V (see PPO paper); eps from value_clip_eps or clip_eps.
+    clip_value_function: bool = True
+    value_clip_eps: float | None = None
     ppo_epochs: int = 4
     num_minibatches: int = 4
     max_iterations: int = 1000
