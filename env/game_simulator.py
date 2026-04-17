@@ -64,6 +64,26 @@ def _hint_if_action_invalid(action: Any, snap: GameSnapshot) -> str | None:
     return None
 
 
+def _format_action_for_print(action: Any, snap: GameSnapshot) -> str:
+    """One-line summary of *action* for logging (may be invalid)."""
+    if not isinstance(action, dict):
+        return f"action: {action!r}"
+    if "selection" not in action or "action_type" not in action:
+        return f"action: {action!r}"
+    at = action["action_type"]
+    if at == 1:
+        verb = "play"
+    elif at == 0:
+        verb = "discard"
+    else:
+        verb = f"type={at!r}"
+    try:
+        idx = _selected_indices(action["selection"], len(snap.hand))
+    except (TypeError, IndexError, ValueError):
+        idx = "(selection unreadable)"
+    return f"action: {verb}  hand_slots={idx}"
+
+
 class GameSimulator:
     """Snapshot plus a Gymnasium env reset to that layout (``info['snapshot']`` is live state)."""
 
@@ -99,8 +119,13 @@ class GameSimulator:
         """If *action* is valid for the current :attr:`info` ``['snapshot']``, :meth:`step`, then print state.
 
         Invalid actions print a ``(hint) …`` line and do **not** call :meth:`~environment.BalatroEnv.step`.
+
+        Always prints **pre-step** snapshot and the action line first; after a valid step, prints
+        **post-step** snapshot as before.
         """
         snap = self.info["snapshot"]
+        self.print_info_snapshot(deck=deck)
+        print(_format_action_for_print(action, snap))
         hint = _hint_if_action_invalid(action, snap)
         if hint is not None:
             print(f"(hint) {hint}")
