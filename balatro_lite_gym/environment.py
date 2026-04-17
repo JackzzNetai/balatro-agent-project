@@ -429,9 +429,9 @@ class BalatroEnv(Env):
         2. **Suit focus:** fewest distinct suits (greedy by suit frequency).
         3. **Straight:** strongest wiki straight if present; else term omitted.
 
-        Φ is ``sqrt(log10(max_score))`` where ``max_score`` is the maximum of those
-        hypothetical play scores (straight omitted when absent). Requires
-        ``max_score > 0`` (``log10`` domain).
+        Φ is ``sqrt(log10(raw))`` where ``raw`` is the maximum hypothetical play score
+        plus ``snapshot.current_score`` (straight omitted when absent). Requires
+        ``raw > 0`` (``log10`` domain).
         """
         if not snapshot.hand:
             return 0.0
@@ -445,8 +445,7 @@ class BalatroEnv(Env):
         ]
         if idx_streak is not None:
             scores.append(_score_play_for_potential(idx_streak, snapshot, self.np_random))
-        raw = max(scores)
-        print(f"raw: {raw}")
+        raw = max(scores) + snapshot.current_score
         return _sqrt_log10(raw)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
