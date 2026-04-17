@@ -40,7 +40,9 @@ HAND_LEVEL_MAX = 20
 
 def generate_snapshot() -> GameSnapshot:
     """Return a random ``GameSnapshot`` within the configured bounds."""
-    hand_levels = {int(h): random.randint(1, HAND_LEVEL_MAX) for h in HandType}
+    hand_levels_by_type = {
+        int(hand_type): random.randint(1, HAND_LEVEL_MAX) for hand_type in HandType
+    }
     return GameSnapshot(
         target_score=random.randint(TARGET_SCORE_MIN, TARGET_SCORE_MAX),
         current_score=0,
@@ -51,20 +53,20 @@ def generate_snapshot() -> GameSnapshot:
         play_remaining=random.randint(1, PLAY_REMAINING_MAX),
         discard_remaining=random.randint(0, DISCARD_REMAINING_MAX),
         player_hand_size=random.randint(PLAYER_HAND_SIZE_MIN, PLAYER_HAND_SIZE_MAX),
-        hand_levels=hand_levels,
+        hand_levels=hand_levels_by_type,
     )
 
 
-def generate_snapshots(n: int) -> List[GameSnapshot]:
-    """Return *n* independently generated snapshots."""
-    return [generate_snapshot() for _ in range(n)]
+def generate_snapshots(count: int) -> List[GameSnapshot]:
+    """Return ``count`` independently generated snapshots."""
+    return [generate_snapshot() for _ in range(count)]
 
 
 # ---------------------------------------------------------------------------
 # JSON ↔ GameSnapshot (schema = temp/snapshot_no_jokers.json)
 # ---------------------------------------------------------------------------
 
-_SNAPSHOT_KEYS = frozenset(
+_REQUIRED_ROOT_JSON_KEYS = frozenset(
     {
         "target_score",
         "current_score",
@@ -80,56 +82,80 @@ _SNAPSHOT_KEYS = frozenset(
 )
 
 
-def _card_json(c: Card) -> dict:
-    return {"card_id": c.card_id, "enhancement": c.enhancement, "edition": c.edition}
+def _card_json(card: Card) -> dict:
+    return {"card_id": card.card_id, "enhancement": card.enhancement, "edition": card.edition}
 
 
-def _joker_json(j: Joker) -> dict:
-    return {"id": j.id, "edition": j.edition}
+def _joker_json(joker: Joker) -> dict:
+    return {"id": joker.id, "edition": joker.edition}
 
 
-def _card_from_json(x: object, *, where: str, index: int) -> Card:
-    if not isinstance(x, dict):
-        raise TypeError(f"{where}[{index}]: expected object, got {type(x).__name__}")
+def _card_from_json(
+    item: object, *, field_name: str, index_in_array: int
+) -> Card:
+    if not isinstance(item, dict):
+        raise TypeError(
+            f"{field_name}[{index_in_array}]: expected object, got {type(item).__name__}"
+        )
     return Card(
-        int(x["card_id"]),
-        int(x["enhancement"]),
-        int(x["edition"]),
+        int(item["card_id"]),
+        int(item["enhancement"]),
+        int(item["edition"]),
     )
 
 
-def _joker_from_json(x: object, *, where: str, index: int) -> Joker:
-    if not isinstance(x, dict):
-        raise TypeError(f"{where}[{index}]: expected object, got {type(x).__name__}")
-    return Joker(int(x["id"]), int(x["edition"]))
+def _joker_from_json(
+    item: object, *, field_name: str, index_in_array: int
+) -> Joker:
+    if not isinstance(item, dict):
+        raise TypeError(
+            f"{field_name}[{index_in_array}]: expected object, got {type(item).__name__}"
+        )
+    return Joker(int(item["id"]), int(item["edition"]))
 
 
-def _cards_from_json(xs: object, field: str) -> List[Card]:
-    if not isinstance(xs, list):
-        raise TypeError(f"{field} must be a JSON array, got {type(xs).__name__}")
-    return [_card_from_json(x, where=field, index=i) for i, x in enumerate(xs)]
+def _cards_from_json(value: object, field_name: str) -> List[Card]:
+    if not isinstance(value, list):
+        raise TypeError(
+            f"{field_name} must be a JSON array, got {type(value).__name__}"
+        )
+    return [
+        _card_from_json(element, field_name=field_name, index_in_array=i)
+        for i, element in enumerate(value)
+    ]
 
 
-def _jokers_from_json(xs: object, field: str) -> List[Joker]:
-    if not isinstance(xs, list):
-        raise TypeError(f"{field} must be a JSON array, got {type(xs).__name__}")
-    return [_joker_from_json(x, where=field, index=i) for i, x in enumerate(xs)]
+def _jokers_from_json(value: object, field_name: str) -> List[Joker]:
+    if not isinstance(value, list):
+        raise TypeError(
+            f"{field_name} must be a JSON array, got {type(value).__name__}"
+        )
+    return [
+        _joker_from_json(element, field_name=field_name, index_in_array=i)
+        for i, element in enumerate(value)
+    ]
 
 
-def _hand_levels_from_json(raw: object) -> dict[int, int]:
-    if not isinstance(raw, dict):
-        raise TypeError(f"hand_levels must be a JSON object, got {type(raw).__name__}")
-    out: dict[int, int] = {}
-    for key, value in raw.items():
-        if not isinstance(value, (int, float)) or isinstance(value, bool):
+def _hand_levels_from_json(hand_levels_value: object) -> dict[int, int]:
+    if not isinstance(hand_levels_value, dict):
+        raise TypeError(
+            "hand_levels must be a JSON object, got "
+            f"{type(hand_levels_value).__name__}"
+        )
+    levels_by_hand_type: dict[int, int] = {}
+    for hand_type_key, level_value in hand_levels_value.items():
+        if not isinstance(level_value, (int, float)) or isinstance(level_value, bool):
             raise TypeError(
-                f"hand_levels[{key!r}]: expected numeric level, got {type(value).__name__}"
+                f"hand_levels[{hand_type_key!r}]: expected numeric level, "
+                f"got {type(level_value).__name__}"
             )
-        level = int(value)
+        level = int(level_value)
         if level < 1:
-            raise ValueError(f"hand_levels[{key!r}]: level must be >= 1, got {level}")
-        out[int(key)] = level
-    return out
+            raise ValueError(
+                f"hand_levels[{hand_type_key!r}]: level must be >= 1, got {level}"
+            )
+        levels_by_hand_type[int(hand_type_key)] = level
+    return levels_by_hand_type
 
 
 def snapshot_to_dict(snapshot: GameSnapshot) -> dict:
@@ -138,51 +164,57 @@ def snapshot_to_dict(snapshot: GameSnapshot) -> dict:
         "target_score": snapshot.target_score,
         "current_score": snapshot.current_score,
         "blind_id": snapshot.blind_id,
-        "hand": [_card_json(c) for c in snapshot.hand],
-        "deck": [_card_json(c) for c in snapshot.deck],
-        "jokers": [_joker_json(j) for j in snapshot.jokers],
+        "hand": [_card_json(card) for card in snapshot.hand],
+        "deck": [_card_json(card) for card in snapshot.deck],
+        "jokers": [_joker_json(joker) for joker in snapshot.jokers],
         "play_remaining": snapshot.play_remaining,
         "discard_remaining": snapshot.discard_remaining,
         "player_hand_size": snapshot.player_hand_size,
-        "hand_levels": {str(k): int(v) for k, v in snapshot.hand_levels.items()},
+        "hand_levels": {
+            str(hand_type): int(level)
+            for hand_type, level in snapshot.hand_levels.items()
+        },
     }
 
 
-def dict_to_snapshot(d: dict) -> GameSnapshot:
+def dict_to_snapshot(root: dict) -> GameSnapshot:
     """Parse the canonical snapshot JSON object into a ``GameSnapshot``."""
-    missing = _SNAPSHOT_KEYS - d.keys()
-    if missing:
-        raise KeyError(f"snapshot JSON missing keys: {', '.join(sorted(missing))}")
+    missing_keys = _REQUIRED_ROOT_JSON_KEYS - root.keys()
+    if missing_keys:
+        raise KeyError(
+            "snapshot JSON missing keys: " + ", ".join(sorted(missing_keys))
+        )
     return GameSnapshot(
-        target_score=int(d["target_score"]),
-        current_score=int(d["current_score"]),
-        blind_id=int(d["blind_id"]),
-        hand=_cards_from_json(d["hand"], "hand"),
-        deck=_cards_from_json(d["deck"], "deck"),
-        jokers=_jokers_from_json(d["jokers"], "jokers"),
-        play_remaining=int(d["play_remaining"]),
-        discard_remaining=int(d["discard_remaining"]),
-        player_hand_size=int(d["player_hand_size"]),
-        hand_levels=_hand_levels_from_json(d["hand_levels"]),
+        target_score=int(root["target_score"]),
+        current_score=int(root["current_score"]),
+        blind_id=int(root["blind_id"]),
+        hand=_cards_from_json(root["hand"], "hand"),
+        deck=_cards_from_json(root["deck"], "deck"),
+        jokers=_jokers_from_json(root["jokers"], "jokers"),
+        play_remaining=int(root["play_remaining"]),
+        discard_remaining=int(root["discard_remaining"]),
+        player_hand_size=int(root["player_hand_size"]),
+        hand_levels=_hand_levels_from_json(root["hand_levels"]),
     )
 
 
 def save_snapshot(path: Union[str, Path], snapshot: GameSnapshot) -> None:
     """Write one canonical JSON object per file (readable by :func:`load_snapshot`)."""
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(snapshot_to_dict(snapshot), f, indent=2, ensure_ascii=False)
+    with open(path, "w", encoding="utf-8") as out_file:
+        json.dump(snapshot_to_dict(snapshot), out_file, indent=2, ensure_ascii=False)
 
 
 def load_snapshot(path: Union[str, Path]) -> GameSnapshot:
     """Load one canonical JSON object from a file (not a JSON array)."""
-    p = Path(path)
-    with open(p, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if not isinstance(data, dict):
+    snapshot_path = Path(path)
+    with open(snapshot_path, "r", encoding="utf-8") as in_file:
+        root = json.load(in_file)
+    if not isinstance(root, dict):
         raise TypeError(
-            f"expected one JSON object per file in {p!s}, got {type(data).__name__}"
+            f"expected one JSON object per file in {snapshot_path!s}, "
+            f"got {type(root).__name__}"
         )
-    return dict_to_snapshot(data)
+    return dict_to_snapshot(root)
 
 
 def load_snapshot_pool_from_json_dir(
@@ -192,10 +224,22 @@ def load_snapshot_pool_from_json_dir(
     sort: bool = True,
 ) -> List[GameSnapshot]:
     """Load each matching file under ``directory`` with :func:`load_snapshot`."""
-    d = Path(directory)
-    if not d.is_dir():
-        raise NotADirectoryError(f"not a directory: {d}")
-    paths = sorted(d.glob(pattern)) if sort else list(d.glob(pattern))
+    root_dir = Path(directory)
+    if not root_dir.is_dir():
+        raise NotADirectoryError(f"not a directory: {root_dir}")
+    paths = sorted(root_dir.glob(pattern)) if sort else list(root_dir.glob(pattern))
     if not paths:
-        raise FileNotFoundError(f"no files matching {pattern!r} under {d}")
-    return [load_snapshot(p) for p in paths]
+        raise FileNotFoundError(f"no files matching {pattern!r} under {root_dir}")
+    return [load_snapshot(path) for path in paths]
+
+
+if __name__ == "__main__":
+    snapshots = generate_snapshots(3)
+    out_dir = Path("snapshots_out")
+    out_dir.mkdir(exist_ok=True)
+    for i, s in enumerate(snapshots):
+        save_snapshot(out_dir / f"{i}.json", s)
+    print(f"Saved {len(snapshots)} snapshots under {out_dir}/")
+
+    loaded0 = load_snapshot(out_dir / "0.json")
+    print(f"Loaded snapshot 0: target_score={loaded0.target_score}")
