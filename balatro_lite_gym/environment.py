@@ -35,7 +35,7 @@ MAX_DECK_LENGTH = 100
 MAX_JOKER_LENGTH = 10
 
 # Invalid action (snapshot unchanged): reward for that step.
-INVALID_ACTION_REWARD = -0.05
+INVALID_ACTION_REWARD = -10
 
 # Structural potential (see :meth:`BalatroEnv._state_potential`).
 
@@ -446,7 +446,7 @@ class BalatroEnv(Env):
         if idx_streak is not None:
             scores.append(_score_play_for_potential(idx_streak, snapshot, self.np_random))
         raw = max(scores) + snapshot.current_score
-        return _sqrt_log10(raw)
+        return _sqrt_log10(raw) * 10
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         opts = options or {}
