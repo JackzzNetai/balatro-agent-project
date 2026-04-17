@@ -26,11 +26,9 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
+# Virtual environments. Do not add ``ENV/`` here: on case-insensitive volumes it ignores the ``env/`` package.
 .venv/
 venv/
-ENV/
-env/
 
 # Testing / coverage
 .pytest_cache/
