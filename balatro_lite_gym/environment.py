@@ -35,7 +35,7 @@ MAX_DECK_LENGTH = 100
 MAX_JOKER_LENGTH = 10
 
 # Invalid action (snapshot unchanged): reward for that step.
-INVALID_ACTION_REWARD = -1
+INVALID_ACTION_REWARD = -0.5
 
 # Structural potential (see :meth:`BalatroEnv._state_potential`).
 
@@ -93,14 +93,9 @@ def _draw_until_hand_size(
         hand.append(deck.pop(j))
 
 
-def _sqrt_log10(x: float | int) -> float:
-    """``sqrt(log10(x))`` for reward / potential shaping. Requires ``x > 0``."""
-    return math.sqrt(math.log10(x))
-
-
 def _terminal_reward(play_remaining: int, current_score: int) -> float:
     """Win-only terminal shaping: play_remaining + sqrt(log10(current_score))."""
-    return play_remaining + _sqrt_log10(current_score)
+    return play_remaining + math.sqrt(math.log10(current_score))
 
 
 def _score_play_for_potential(
@@ -411,8 +406,9 @@ class BalatroEnv(Env):
     def _state_potential(self, snapshot: GameSnapshot) -> float:
         """Potential Φ(s) for potential-based reward shaping (Ng et al.).
 
-        On **valid** transitions :meth:`step` adds ``shaping_gamma * Φ(s') - Φ(s)``
-        to the step reward. **Invalid** actions (see :meth:`_invalid_action_step`)
+        On **valid** non-terminal transitions :meth:`step` adds
+        ``shaping_gamma * Φ(s') - Φ(s)`` to the step reward. **Terminal** states use
+        ``Φ(s') = 0`` (absorbing). **Invalid** actions (see :meth:`_invalid_action_step`)
         add the same PBRS form with ``Φ(s') = Φ(s)`` using cached :attr:`_prev_potential`,
         plus ``INVALID_ACTION_REWARD``.
 
@@ -446,7 +442,7 @@ class BalatroEnv(Env):
         if idx_streak is not None:
             scores.append(_score_play_for_potential(idx_streak, snapshot, self.np_random))
         raw = max(scores) + snapshot.current_score
-        return _sqrt_log10(raw) * 10
+        return math.log10(raw)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         opts = options or {}
@@ -508,7 +504,7 @@ class BalatroEnv(Env):
             )
             reward = 0.0
 
-        phi_prime = self._state_potential(snap)
+        phi_prime = 0.0 if terminated else self._state_potential(snap)
         reward += self.shaping_gamma * phi_prime - self._prev_potential
         self._prev_potential = phi_prime
 

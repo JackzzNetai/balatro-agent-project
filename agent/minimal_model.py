@@ -153,7 +153,7 @@ class MinimalCombatPPOAgent(nn.Module):
         dim_ff: int = 1024,
         dropout: float = 0.1,
         *,
-        depth_hand: int = 2,
+        depth_hand: int = 3,
         depth_hc: int = 2,
     ):
         super().__init__()
