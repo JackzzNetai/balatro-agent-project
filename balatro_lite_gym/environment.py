@@ -35,7 +35,7 @@ MAX_DECK_LENGTH = 100
 MAX_JOKER_LENGTH = 10
 
 # Invalid action (snapshot unchanged): reward for that step.
-INVALID_ACTION_REWARD = -10
+INVALID_ACTION_REWARD = -1
 
 # Structural potential (see :meth:`BalatroEnv._state_potential`).
 
