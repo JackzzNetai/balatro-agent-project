@@ -15,14 +15,14 @@ class PPOConfig:
     rollout_steps: int = 16
     # PPO
     lr: float = 2.5e-4
-    gamma: float = 0.99
+    gamma: float = 1.0
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
     ppo_epochs: int = 4
     num_minibatches: int = 4
     max_iterations: int = 1000
     c_value: float = 0.5
-    c_entropy: float = 0.01
+    c_entropy: float = 0.05
     max_grad_norm: float = 0.5
     use_lr_scheduler: bool = True
     lr_min_ratio: float = 0.1
