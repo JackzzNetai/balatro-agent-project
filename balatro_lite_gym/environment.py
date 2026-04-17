@@ -19,7 +19,13 @@ from defs import (
 )
 from engine import Card, GameSnapshot, Joker
 from scoring import score_play
-from util import chips_mult_for_hand_level, hand_debuff_mask
+from util import (
+    chips_mult_for_hand_level,
+    hand_debuff_mask,
+    pick_five_longest_rank_streak,
+    pick_five_min_rank_diversity,
+    pick_five_min_suit_diversity,
+)
 
 # -----------------------------------------------------------------------------
 # Constants — observation caps (independent of transient game state)
@@ -31,11 +37,7 @@ MAX_JOKER_LENGTH = 10
 # Invalid action (snapshot unchanged): reward for that step.
 INVALID_ACTION_REWARD = -0.1
 
-# Structural potential: ``BalatroEnv._state_potential`` (suit HHI, rank HHI, straight window).
-STATE_POTENTIAL_NORM = 50  # scale raw weighted sum to keep PBRS comparable to terminal reward
-STATE_POTENTIAL_W_SUIT = 1.0
-STATE_POTENTIAL_W_SET = 1.0
-STATE_POTENTIAL_W_STRAIGHT = 1.0
+# Structural potential (see :meth:`BalatroEnv._state_potential`).
 
 # Padding convention: invalid slots are zeros; `*_mask` is 1 for real entries, 0 for pad.
 # `*_size` is the true count of entries (capped at the corresponding MAX_*_LENGTH for the vector).
@@ -91,16 +93,36 @@ def _draw_until_hand_size(
         hand.append(deck.pop(j))
 
 
+def _sqrt_log10(x: float | int) -> float:
+    """``sqrt(log10(x))`` for reward / potential shaping. Requires ``x > 0``."""
+    return math.sqrt(math.log10(x))
+
+
 def _terminal_reward(play_remaining: int, current_score: int) -> float:
     """Win-only terminal shaping: play_remaining + sqrt(log10(current_score))."""
-    return play_remaining + math.sqrt(math.log10(current_score))
+    return play_remaining + _sqrt_log10(current_score)
 
 
-def _poker_hand_chips_times_mult(snapshot: GameSnapshot, hand: HandType) -> float:
-    """Chips × mult for the poker-hand line ``hand`` at ``snapshot.hand_levels``."""
-    level = snapshot.hand_levels[int(hand)]
-    c, m = chips_mult_for_hand_level(hand, level)
-    return float(c * m)
+def _score_play_for_potential(
+    indices: list[int],
+    snapshot: GameSnapshot,
+    rng: np.random.Generator,
+) -> int:
+    """Run :func:`scoring.score_play` with ``hand`` temporarily missing those indices.
+
+    Restores ``snapshot.hand`` in ``finally`` (after pops). Does not draw or change
+    ``play_remaining`` / ``current_score``.
+    """
+    hand = snapshot.hand
+    played = [hand[i] for i in indices]
+    removed: list[tuple[int, Card]] = []
+    for idx in sorted(indices, reverse=True):
+        removed.append((idx, hand.pop(idx)))
+    try:
+        return score_play(played, snapshot, rng)
+    finally:
+        for idx, card in sorted(removed, key=lambda t: t[0]):
+            hand.insert(idx, card)
 
 
 # -----------------------------------------------------------------------------
@@ -358,9 +380,6 @@ class BalatroEnv(Env):
         self._init_snapshot_template: GameSnapshot = copy.deepcopy(snapshot)
         self._snapshot: GameSnapshot | None = None
         self._prev_potential: float = 0.0
-        self._potential_w_flush: float = 0.0
-        self._potential_w_three_kind: float = 0.0
-        self._potential_w_straight: float = 0.0
 
     def _info(self, *, terminal: bool = False, combat_won: bool = False) -> dict:
         assert self._snapshot is not None
@@ -397,45 +416,38 @@ class BalatroEnv(Env):
         add the same PBRS form with ``Φ(s') = Φ(s)`` using cached :attr:`_prev_potential`,
         plus ``INVALID_ACTION_REWARD``.
 
-        Combines suit concentration (HHI of suit counts, ``Σ n_s²``), rank
-        multimodality (HHI of rank counts, ``Σ n_r²``), and best 5-card straight
-        *presence* window (squared max window sum over rank presence, with Ace high
-        wrap). Card ids use ``suit = id // NUM_RANKS``, ``rank = id % NUM_RANKS``.
+        Builds three multisets (up to five cards each) from ``snapshot.hand`` via
+        :func:`util.pick_five_min_rank_diversity`,
+        :func:`util.pick_five_min_suit_diversity`, and
+        :func:`util.pick_five_longest_rank_streak` (hand indices). Each multiset is
+        scored with :func:`scoring.score_play` after temporarily removing those cards
+        from ``hand`` (no deck draw, no ``play_remaining`` / ``current_score``
+        updates). Multisets may overlap. Uses :attr:`np_random` (stochastic scoring
+        effects advance RNG).
 
-        ``chips × mult`` from :meth:`reset` weights: Flush (suit HHI), Three of a Kind
-        (rank HHI / ``phi_sets``), Straight (straight window). Global scalars:
-        ``STATE_POTENTIAL_W_*``. The weighted sum is divided by
-        ``STATE_POTENTIAL_NORM`` so PBRS stays modest vs the win reward.
+        1. **Rank focus:** fewest distinct ranks (greedy by rank frequency).
+        2. **Suit focus:** fewest distinct suits (greedy by suit frequency).
+        3. **Straight:** strongest wiki straight if present; else term omitted.
+
+        Φ is ``sqrt(log10(max_score))`` where ``max_score`` is the maximum of those
+        hypothetical play scores (straight omitted when absent). Requires
+        ``max_score > 0`` (``log10`` domain).
         """
-        hand_card_ids = np.fromiter(
-            (c.card_id for c in snapshot.hand), dtype=np.int32, count=len(snapshot.hand)
-        )
-        valid_ids = hand_card_ids[hand_card_ids >= 0]
-        if len(valid_ids) == 0:
+        if not snapshot.hand:
             return 0.0
-
-        ranks = valid_ids % NUM_RANKS
-        suits = valid_ids // NUM_RANKS
-
-        suit_counts = np.bincount(suits, minlength=NUM_SUITS)
-        phi_suit = float(np.sum(suit_counts**2))
-
-        rank_counts = np.bincount(ranks, minlength=NUM_RANKS)
-        phi_sets = float(np.sum(rank_counts**2))
-
-        rank_present = (rank_counts > 0).astype(np.int32)
-        padded_ranks = np.concatenate([rank_present, [rank_present[0]]])
-        window = np.ones(5, dtype=np.int32)
-        window_sums = np.convolve(padded_ranks, window, mode="valid")
-        max_straight_len = int(np.max(window_sums))
-        phi_straight = float(max_straight_len**2)
-
-        raw = (
-            STATE_POTENTIAL_W_SUIT * self._potential_w_flush * phi_suit
-            + STATE_POTENTIAL_W_SET * self._potential_w_three_kind * phi_sets
-            + STATE_POTENTIAL_W_STRAIGHT * self._potential_w_straight * phi_straight
-        )
-        return raw / float(STATE_POTENTIAL_NORM)
+        hand = snapshot.hand
+        idx_rank = pick_five_min_rank_diversity(hand)
+        idx_suit = pick_five_min_suit_diversity(hand)
+        idx_streak = pick_five_longest_rank_streak(hand)
+        scores = [
+            _score_play_for_potential(idx_rank, snapshot, self.np_random),
+            _score_play_for_potential(idx_suit, snapshot, self.np_random),
+        ]
+        if idx_streak is not None:
+            scores.append(_score_play_for_potential(idx_streak, snapshot, self.np_random))
+        raw = max(scores)
+        print(f"raw: {raw}")
+        return _sqrt_log10(raw)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         opts = options or {}
@@ -447,15 +459,6 @@ class BalatroEnv(Env):
             self._snapshot = src
         else:
             self._snapshot = copy.deepcopy(self._init_snapshot_template)
-        self._potential_w_flush = _poker_hand_chips_times_mult(
-            self._snapshot, HandType.FLUSH
-        )
-        self._potential_w_three_kind = _poker_hand_chips_times_mult(
-            self._snapshot, HandType.THREE_OF_A_KIND
-        )
-        self._potential_w_straight = _poker_hand_chips_times_mult(
-            self._snapshot, HandType.STRAIGHT
-        )
         self._prev_potential = self._state_potential(self._snapshot)
         return self._get_obs(), self._info()
 

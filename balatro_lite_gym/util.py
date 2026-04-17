@@ -147,9 +147,11 @@ def _max_rank_bucket_with_wilds(played: list[Card]) -> int:
     return max(counts.values(), default=0) + w
 
 
+_WHEEL_STRAIGHT_RANKS = frozenset({0, 1, 2, 3, 4})
+_BROADWAY_STRAIGHT_RANKS = frozenset({0, 9, 10, 11, 12})
 _STRAIGHT_RANK_TEMPLATES: tuple[frozenset[int], ...] = (
-    frozenset({0, 1, 2, 3, 4}),
-    frozenset({0, 9, 10, 11, 12}),
+    _WHEEL_STRAIGHT_RANKS,
+    _BROADWAY_STRAIGHT_RANKS,
     *(frozenset(range(low, low + 5)) for low in range(1, 9)),
 )
 
@@ -332,6 +334,86 @@ def recognize_poker_hand(
     hand = _classify_poker_hand(played, ranks)
     idx = _scored_indices(played, ranks, hand)
     return hand, [played[i] for i in idx]
+
+
+def valid_hand_cards(hand: list[Card]) -> list[Card]:
+    """In-hand cards with non-placeholder ids (``card_id >= 0``)."""
+    return [c for c in hand if c.card_id >= 0]
+
+
+def pick_five_min_rank_diversity(hand: list[Card]) -> list[int]:
+    """Up to five **indices** (into ``hand``) minimizing distinct ranks.
+
+    Greedy by rank-count, then rank; within a rank, lower ``card_id`` first.
+    Callers must use real cards (``card_id`` in the valid deck range).
+    """
+    if not hand:
+        return []
+    k = min(5, len(hand))
+    by_rank: dict[int, list[tuple[int, Card]]] = {}
+    for i, c in enumerate(hand):
+        r = card_rank(c.card_id)
+        by_rank.setdefault(r, []).append((i, c))
+    order = sorted(by_rank.keys(), key=lambda r: (-len(by_rank[r]), r))
+    out: list[int] = []
+    for r in order:
+        for i, _ in sorted(by_rank[r], key=lambda ic: ic[1].card_id):
+            out.append(i)
+            if len(out) >= k:
+                return out
+    return out
+
+
+def pick_five_min_suit_diversity(hand: list[Card]) -> list[int]:
+    """Up to five **indices** (into ``hand``) minimizing distinct suits.
+
+    Greedy by suit-count, then suit; within a suit, lower ``card_id`` first.
+    Callers must use real cards (``card_id`` in the valid deck range).
+    """
+    if not hand:
+        return []
+    k = min(5, len(hand))
+    by_suit: dict[int, list[tuple[int, Card]]] = {}
+    for i, c in enumerate(hand):
+        s = card_suit(c.card_id)
+        by_suit.setdefault(s, []).append((i, c))
+    order = sorted(by_suit.keys(), key=lambda s: (-len(by_suit[s]), s))
+    out: list[int] = []
+    for s in order:
+        for i, _ in sorted(by_suit[s], key=lambda ic: ic[1].card_id):
+            out.append(i)
+            if len(out) >= k:
+                return out
+    return out
+
+
+def pick_five_longest_rank_streak(hand: list[Card]) -> list[int] | None:
+    """Return five **indices** (into ``hand``) forming the strongest wiki straight, or ``None``.
+
+    Build counts for ranks Ace..King, append Ace count again (length
+    ``NUM_RANKS + 1``). Slide a window of five from start index ``9`` down to ``0``;
+    the first window with all entries ``> 0`` is chosen (Broadway before 9-high, …,
+    wheel last). One card per rank (lowest ``card_id`` per rank).
+
+    Returns ``None`` if ``len(hand) < 5`` or no qualifying straight. Callers must use
+    real cards (``card_id`` in the valid deck range). Printed ranks only (no Wild
+    special-casing).
+    """
+    if len(hand) < 5:
+        return None
+    by_rank: dict[int, list[tuple[int, Card]]] = {}
+    for i, c in enumerate(hand):
+        r = card_rank(c.card_id)
+        by_rank.setdefault(r, []).append((i, c))
+    ext = [len(by_rank.get(r, [])) for r in range(NUM_RANKS)] + [len(by_rank.get(0, []))]
+    for i in range(9, -1, -1):
+        if all(ext[i + k] > 0 for k in range(5)):
+            ranks = [i + k if i + k < NUM_RANKS else 0 for k in range(5)]
+            return [
+                min(by_rank[r], key=lambda ic: ic[1].card_id)[0]
+                for r in ranks
+            ]
+    return None
 
 
 def played_contains(played: list[Card], inner: HandType) -> bool:
