@@ -2,6 +2,8 @@
 
 Run from repo root::
     python env/debug_slot_probs.py path/to.ckpt path/to.json [--stochastic]
+
+Colab / Jupyter: use ``env/DebugSlotProbs.ipynb`` (Drive mount + same logging).
 """
 
 from __future__ import annotations
