@@ -110,8 +110,8 @@ class MinimalCombatBackbone(nn.Module):
         nhead: int = 8,
         dim_ff: int = 1024,
         dropout: float = 0.1,
-        depth_hand: int = 2,
-        depth_hc: int = 2,
+        depth_hand: int = 3,
+        depth_hc: int = 1,
     ):
         super().__init__()
 
