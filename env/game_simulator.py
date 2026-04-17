@@ -93,7 +93,7 @@ class GameSimulator:
         self,
         snapshot: GameSnapshot,
         *,
-        seed: int | None = 0,
+        seed: int | None = None,
     ) -> None:
         self.snapshot = snapshot
         self.env = BalatroEnv(snapshot)
@@ -140,7 +140,7 @@ class GameSimulator:
         cls,
         path: Path,
         *,
-        seed: int | None = 0,
+        seed: int | None = None,
     ) -> GameSimulator:
         return cls(load_snapshot(path), seed=seed)
 
@@ -159,8 +159,8 @@ def main() -> None:
     p.add_argument(
         "--seed",
         type=int,
-        default=0,
-        help="Episode RNG seed (draw order); pass a negative value for None → random.",
+        default=-1,
+        help="Episode RNG seed (draw order). Default: random. Pass a non-negative int for reproducibility.",
     )
     args = p.parse_args()
     path = args.snapshot.resolve()
