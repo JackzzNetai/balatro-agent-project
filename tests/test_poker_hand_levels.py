@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from defs import HandType, POKER_HAND_BASE_CHIPS_MULT, POKER_HAND_LEVEL_UP_CHIPS_MULT
-from env.snapshot_io import hand_level_from_chips_mult, hand_levels_from_levels
 from util import chips_mult_for_hand_level
 
 
@@ -40,20 +39,6 @@ def test_level_2_three_of_a_kind():
 def test_level_2_straight_flush():
     c, m = chips_mult_for_hand_level(HandType.STRAIGHT_FLUSH, 2)
     assert (c, m) == (140, 12)
-
-
-def test_hand_levels_from_levels_round_trip():
-    levels = {int(h): 3 for h in HandType}
-    hl = hand_levels_from_levels(levels)
-    assert hl == levels
-    for k, lev in hl.items():
-        c, mw = chips_mult_for_hand_level(HandType(k), lev)
-        assert hand_level_from_chips_mult(HandType(k), c, float(mw)) == lev
-
-
-def test_hand_level_from_chips_mult_rejects_off_grid():
-    with pytest.raises(ValueError, match="not base"):
-        hand_level_from_chips_mult(HandType.HIGH_CARD, 10, 1)
 
 
 def test_chips_mult_rejects_level_zero():

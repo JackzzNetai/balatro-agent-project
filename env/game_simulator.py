@@ -1,11 +1,11 @@
-"""Combat game simulator: load a snapshot from JSON and wrap it in :class:`~environment.BalatroEnv`."""
+"""Build :class:`~environment.BalatroEnv` from a snapshot and step it (optional pretty-print)."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Literal, NamedTuple
+from typing import Any, Literal
 
 _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
@@ -13,142 +13,72 @@ if str(_REPO) not in sys.path:
 sys.path.insert(0, str(_REPO / "balatro_lite_gym"))
 
 from engine import GameSnapshot  # noqa: E402
-from env.debug import print_snapshot  # noqa: E402
+from env.debug import print_snapshot as _dump_snapshot  # noqa: E402
 from env.snapshot_io import load_snapshot  # noqa: E402
-from environment import (  # noqa: E402
-    BalatroEnv,
-    _is_invalid_selection,
-    _selected_indices,
-)
+from environment import BalatroEnv, _selected_indices  # noqa: E402
 
 _DEFAULT_SNAPSHOT_JSON = _REPO / "temp" / "snapshot_no_jokers_level1.json"
 
 
-class StepOutcome(NamedTuple):
-    """Result of :meth:`GameSimulator.step_and_print`."""
-
-    stepped: bool
-    """``True`` if :meth:`~environment.BalatroEnv.step` ran."""
-    terminated: bool = False
-    """``True`` if the episode ended on that step."""
-    combat_won: bool | None = None
-    """On a terminal step: ``True`` = won, ``False`` = loss; else ``None``."""
-    reward: float | None = None
-    """Env step reward when ``stepped``; else ``None``."""
-
-
-def _hint_if_action_invalid(action: Any, snap: GameSnapshot) -> str | None:
-    """Return a short hint if *action* would fail or no-op like :meth:`BalatroEnv.step`; else ``None``."""
-    if not isinstance(action, dict):
-        return "action should be a dict with keys 'selection' and 'action_type'."
-    if "selection" not in action or "action_type" not in action:
-        return "action needs 'selection' (per-slot 0/1) and 'action_type' (0=discard, 1=play)."
-    hand = snap.hand
-    try:
-        indices = _selected_indices(action["selection"], len(hand))
-    except (TypeError, IndexError, ValueError):
-        return "selection must be indexable; use 0/1 for each hand slot index 0..len(hand)-1."
-
-    if _is_invalid_selection(indices):
-        return "pick 1–5 cards from the hand (at least one slot, at most five)."
-
-    at = action["action_type"]
-    if at not in (0, 1):
-        return "action_type must be 0 (discard) or 1 (play)."
-
-    if at == 1 and snap.play_remaining <= 0:
-        return "cannot play: no plays remaining (episode may be over)."
-    if at == 0 and snap.discard_remaining <= 0:
-        return "cannot discard: no discards remaining."
-
-    return None
-
-
-def _format_action_for_print(action: Any, snap: GameSnapshot) -> str:
-    """One-line summary of *action* for logging (may be invalid)."""
+def _action_line(action: Any, snap: GameSnapshot) -> str:
     if not isinstance(action, dict):
         return f"action: {action!r}"
     if "selection" not in action or "action_type" not in action:
         return f"action: {action!r}"
     at = action["action_type"]
-    if at == 1:
-        verb = "play"
-    elif at == 0:
-        verb = "discard"
-    else:
-        verb = f"type={at!r}"
+    verb = (
+        "play"
+        if at == 1
+        else "discard"
+        if at == 0
+        else f"type={at!r}"
+    )
     try:
         idx = _selected_indices(action["selection"], len(snap.hand))
     except (TypeError, IndexError, ValueError):
-        idx = "(selection unreadable)"
+        idx = "(bad selection)"
     return f"action: {verb}  hand_slots={idx}"
 
 
 class GameSimulator:
-    """Snapshot plus a Gymnasium env reset to that layout (``info['snapshot']`` is live state)."""
+    """Holds a :class:`~environment.BalatroEnv` reset to a layout; ``info['snapshot']`` is live state."""
 
-    __slots__ = ("snapshot", "env", "obs", "info")
+    __slots__ = ("env", "obs", "info")
 
-    def __init__(
-        self,
-        snapshot: GameSnapshot,
-        *,
-        seed: int | None = None,
-    ) -> None:
-        self.snapshot = snapshot
+    def __init__(self, snapshot: GameSnapshot, *, seed: int | None = None) -> None:
         self.env = BalatroEnv(snapshot)
         self.obs, self.info = self.env.reset(
             seed=seed,
             options={"snapshot": snapshot},
         )
 
-    def print_info_snapshot(
-        self,
-        *,
-        deck: Literal["summary", "full"] = "summary",
-    ) -> None:
-        """Pretty-print :attr:`info` ``['snapshot']`` (same object as live env state)."""
-        print_snapshot(self.info["snapshot"], deck=deck)
-
-    def step_and_print(
-        self,
-        action: dict,
-        *,
-        deck: Literal["summary", "full"] = "summary",
-        print_pre: bool = True,
-        print_post: bool = False,
-        print_post_on_terminal: bool = True,
-    ) -> StepOutcome:
-        """Validate *action*, optionally print snapshot(s), then :meth:`step` if valid.
-
-        By default prints **pre-step** snapshot once, then the action line. Invalid actions print a
-        ``(hint) …`` line and do **not** call :meth:`~environment.BalatroEnv.step`.
-
-        After a valid step, **post-step** snapshot is printed only if ``print_post`` is true, or if
-        ``print_post_on_terminal`` and the episode terminated (so the final board is shown once).
-        """
-        snap = self.info["snapshot"]
-        if print_pre:
-            self.print_info_snapshot(deck=deck)
-        print(_format_action_for_print(action, snap))
-        hint = _hint_if_action_invalid(action, snap)
-        if hint is not None:
-            print(f"(hint) {hint}")
-            return StepOutcome(False)
-        self.obs, reward, terminated, _truncated, self.info = self.env.step(action)
-        if print_post or (print_post_on_terminal and terminated):
-            self.print_info_snapshot(deck=deck)
-        cw = self.info.get("combat_won") if terminated else None
-        return StepOutcome(True, bool(terminated), cw, float(reward))
-
     @classmethod
-    def from_json(
-        cls,
-        path: Path,
-        *,
-        seed: int | None = None,
-    ) -> GameSimulator:
+    def from_json(cls, path: Path, *, seed: int | None = None) -> GameSimulator:
         return cls(load_snapshot(path), seed=seed)
+
+    @property
+    def snapshot(self) -> GameSnapshot:
+        return self.info["snapshot"]
+
+    def print_snapshot(self, *, deck: Literal["summary", "full"] = "summary") -> None:
+        _dump_snapshot(self.snapshot, deck=deck)
+
+    def step(self, action) -> tuple[Any, float, bool, bool, dict]:
+        """One Gymnasium step; updates :attr:`obs` and :attr:`info`."""
+        self.obs, reward, terminated, truncated, self.info = self.env.step(action)
+        return self.obs, reward, terminated, truncated, self.info
+
+    def step_print(
+        self,
+        action,
+        *,
+        deck: Literal["summary", "full"] = "summary",
+    ) -> tuple[Any, float, bool, bool, dict]:
+        """Print a one-line action summary, :meth:`step`, then dump the resulting snapshot."""
+        print(_action_line(action, self.snapshot))
+        out = self.step(action)
+        self.print_snapshot(deck=deck)
+        return out
 
 
 def main() -> None:
@@ -174,7 +104,7 @@ def main() -> None:
         sys.exit(f"snapshot not found: {path}")
     seed: int | None = None if args.seed < 0 else args.seed
     sim = GameSimulator.from_json(path, seed=seed)
-    sim.print_info_snapshot(deck="summary")
+    sim.print_snapshot(deck="summary")
 
 
 if __name__ == "__main__":

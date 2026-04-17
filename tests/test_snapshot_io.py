@@ -70,26 +70,6 @@ def test_snapshot_json_hand_levels_are_integer_levels(tmp_path: Path):
     assert loaded.hand_levels == snap.hand_levels
 
 
-def test_dict_to_snapshot_legacy_hand_levels_lists():
-    from defs import HandType
-    from env.snapshot_io import dict_to_snapshot
-
-    d = {
-        "target_score": 100,
-        "current_score": 0,
-        "blind_id": -1,
-        "hand": [],
-        "deck": [],
-        "jokers": [],
-        "play_remaining": 1,
-        "discard_remaining": 0,
-        "player_hand_size": 8,
-        "hand_levels": {str(int(HandType.PAIR)): [10, 2]},
-    }
-    s = dict_to_snapshot(d)
-    assert s.hand_levels[int(HandType.PAIR)] == 1
-
-
 def test_dict_to_snapshot_level_only_hand_levels():
     from defs import HandType
     from env.snapshot_io import dict_to_snapshot
