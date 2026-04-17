@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal, TextIO
 
 from defs import (
@@ -24,7 +25,10 @@ from util import rank_from_card_id, suit_from_card_id
 _SUIT_GLYPH: dict[int, str] = {0: "♣", 1: "♦", 2: "♥", 3: "♠"}
 _DECK_PREVIEW = 8
 
-__all__ = ["format_snapshot", "print_snapshot"]
+__all__ = [
+    "format_snapshot",
+    "print_snapshot",
+]
 
 
 def _blind_label(blind_id: int) -> str:
@@ -125,3 +129,4 @@ def print_snapshot(
 ) -> None:
     """Print :func:`format_snapshot` to ``file`` (default stdout)."""
     print(format_snapshot(snapshot, deck=deck), end="", file=file)
+

@@ -24,7 +24,8 @@ class PPOConfig:
     c_value: float = 0.5
     c_entropy: float = 0.01
     max_grad_norm: float = 0.5
-    # Architecture (matches ``CombatPPOAgent``)
+    use_lr_scheduler: bool = True
+    lr_min_ratio: float = 0.1
     d_model: int = 256
     nhead: int = 8
     dim_ff: int = 1024

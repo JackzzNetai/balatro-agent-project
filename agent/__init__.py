@@ -7,12 +7,12 @@
 
 PyTorch rollout buffer / GAE (optional dependency; imports torch when used)::
 
-    from agent.lite_combat_env import VecRolloutBuffer, compute_gae_vectorized, dict_to_tensors
+    from env.lite_combat_env import VecRolloutBuffer, compute_gae_vectorized, dict_to_tensors
 """
 
 from __future__ import annotations
 
-from .lite_combat_env import (
+from env.lite_combat_env import (
     LitePooledCombatEnv,
     make_lite_pooled_combat_env,
     make_vec,

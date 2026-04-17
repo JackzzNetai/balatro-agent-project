@@ -1,4 +1,4 @@
-"""Smoke tests for ``agent.lite_combat_env.make_vec`` (sync + async backends)."""
+"""Smoke tests for ``env.lite_combat_env.make_vec`` (sync + async backends)."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def _tiny_pool():
 
 
 def test_make_vec_sync_reset_step():
-    from agent.lite_combat_env import make_vec
+    from env.lite_combat_env import make_vec
     from environment import MAX_HAND_LENGTH
 
     vec = make_vec(_tiny_pool(), n=2, base_seed=0, backend="sync")
@@ -49,7 +49,7 @@ def test_make_vec_sync_reset_step():
 
 
 def test_make_vec_async_reset_step():
-    from agent.lite_combat_env import make_vec
+    from env.lite_combat_env import make_vec
     from environment import MAX_HAND_LENGTH
 
     vec = make_vec(_tiny_pool(), n=2, base_seed=0, backend="async")
@@ -81,7 +81,7 @@ def test_import_agent_does_not_load_torch():
 
 def test_combat_ppo_forward_smoke():
     torch = pytest.importorskip("torch")
-    from agent.lite_combat_env import dict_to_tensors, make_vec
+    from env.lite_combat_env import dict_to_tensors, make_vec
     from agent.model import CombatPPOAgent
     from environment import MAX_HAND_LENGTH
 

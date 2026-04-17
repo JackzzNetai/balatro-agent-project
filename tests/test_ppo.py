@@ -31,7 +31,7 @@ def _tiny_pool():
 
 def test_ppo_update_smoke():
     torch = pytest.importorskip("torch")
-    from agent.lite_combat_env import dict_to_tensors, make_vec
+    from env.lite_combat_env import dict_to_tensors, make_vec
     from agent.model import CombatPPOAgent
     from agent.ppo import compute_log_prob_and_entropy, ppo_update
     from agent.ppo_config import PPOConfig
