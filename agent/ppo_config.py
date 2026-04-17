@@ -14,7 +14,7 @@ class PPOConfig:
     num_envs: int = 64
     rollout_steps: int = 16
     # PPO
-    lr: float = 2.5e-4
+    lr: float = 1e-4
     gamma: float = 1.0
     gae_lambda: float = 0.97
     clip_eps: float = 0.2

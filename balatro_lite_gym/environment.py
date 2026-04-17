@@ -504,7 +504,8 @@ class BalatroEnv(Env):
             )
             reward = 0.0
 
-        phi_prime = 0.0 if terminated else self._state_potential(snap)
+        # phi_prime = 0.0 if terminated else self._state_potential(snap)
+        phi_prime = self._state_potential(snap)
         reward += self.shaping_gamma * phi_prime - self._prev_potential
         self._prev_potential = phi_prime
 
