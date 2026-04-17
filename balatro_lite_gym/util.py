@@ -16,7 +16,7 @@ from itertools import product
 
 from defs import NUM_RANKS, CardEnhancement, CardRank, CardSuit, HandType
 from defs.poker_hands import POKER_HAND_BASE_CHIPS_MULT, POKER_HAND_LEVEL_UP_CHIPS_MULT
-from engine import Card
+from engine import Card, GameSnapshot
 
 
 def rank_from_card_id(card_id: int) -> CardRank:
@@ -418,3 +418,14 @@ def chips_mult_for_hand_level(hand: HandType, level: int) -> tuple[int, int]:
     dc, dm = POKER_HAND_LEVEL_UP_CHIPS_MULT[hand]
     n = level - 1
     return bc + n * dc, bm + n * dm
+
+
+def hand_debuff_mask(snapshot: GameSnapshot) -> list[bool]:
+    """Per-hand-slot debuff flags aligned with observation padding (length ``MAX_HAND_LENGTH``).
+
+    Index ``i`` corresponds to ``snapshot.hand[i]`` when ``i < len(snapshot.hand)``; padded
+    slots are ``False``. Stub: all ``False`` until debuff rules exist in this gym.
+    """
+    from environment import MAX_HAND_LENGTH
+
+    return [False] * MAX_HAND_LENGTH

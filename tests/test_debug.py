@@ -18,21 +18,30 @@ def test_format_snapshot_contains_core_fields_and_hand_card():
         hand_levels={int(HandType.HIGH_CARD): 2},
     )
     text = format_snapshot(snap)
-    assert "target_score:      300" in text
-    assert "current_score:     50" in text
+    assert "=== Blind / score ===" in text
+    assert "round chips: 50 / target 300" in text
+    assert "need 250 more" in text
+    assert "=== Resources ===" in text
+    assert "hand_size=5" in text
+    assert "hands_left=4" in text
+    assert "discards_left=3" in text
+    assert "=== Boss ===" in text
+    assert "blind_id=-1" in text
     assert "non-boss blind" in text
-    assert "--- Hand ---" in text
+    assert "=== Hand ===" in text
     assert "A♣" in text
     assert "K♠" in text
     assert "Bonus Card" in text
     assert "Holographic" in text
-    assert "--- Deck ---" in text
-    assert "1 card(s)" in text
-    assert "--- Jokers ---" in text
+    assert "=== Draw pile ===" in text
+    assert "cards in draw pile: 1" in text
+    assert "=== Jokers ===" in text
     assert "Jolly Joker" in text
+    assert "=== Hand levels (id, lvl, chips, mult) ===" in text
     assert "High Card" in text
-    assert "level=2" in text
-    assert "15×2" in text
+    assert "lvl=  2" in text
+    assert "chips=   15" in text
+    assert "mult=  2" in text
 
 
 def test_format_snapshot_boss_blind_label():
@@ -44,6 +53,6 @@ def test_format_snapshot_boss_blind_label():
 def test_format_snapshot_deck_full_lists_all_cards():
     snap = minimal_snapshot(deck=[Card(0, 0, 0), Card(1, 0, 0)])
     text = format_snapshot(snap, deck="full")
+    assert "full list" in text
     assert "[0] A♣" in text
     assert "[1] 2♣" in text
-    assert "first " not in text

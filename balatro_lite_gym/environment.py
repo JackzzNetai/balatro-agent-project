@@ -18,7 +18,7 @@ from defs import (
 )
 from engine import Card, GameSnapshot, Joker
 from scoring import score_play
-from util import chips_mult_for_hand_level
+from util import chips_mult_for_hand_level, hand_debuff_mask
 
 # -----------------------------------------------------------------------------
 # Constants — observation caps (independent of transient game state)
@@ -153,6 +153,7 @@ def snapshot_to_obs_dict(snapshot: GameSnapshot) -> dict:
     h_size, h_ids, h_enh, h_ed, h_mask = _encode_card_pile(snapshot.hand, MAX_HAND_LENGTH)
     d_size, d_ids, d_enh, d_ed, d_mask = _encode_card_pile(snapshot.deck, MAX_DECK_LENGTH)
     j_size, j_ids, j_ed, j_mask = _encode_jokers(snapshot.jokers, MAX_JOKER_LENGTH)
+    h_debuff = np.array(hand_debuff_mask(snapshot), dtype=np.int32)
     return {
         "target_score": _scalar_int(snapshot.target_score),
         "current_score": _scalar_int(snapshot.current_score),
@@ -163,6 +164,7 @@ def snapshot_to_obs_dict(snapshot: GameSnapshot) -> dict:
             "hand_enhancements": h_enh,
             "hand_editions": h_ed,
             "hand_mask": h_mask,
+            "hand_is_debuffed": h_debuff,
         },
         "deck": {
             "deck_size": d_size,
@@ -189,26 +191,38 @@ def snapshot_to_obs_dict(snapshot: GameSnapshot) -> dict:
 # -----------------------------------------------------------------------------
 
 
-def _hand_space(max_len: int, prefix: str) -> spaces.Dict:
-    return spaces.Dict(
-        {
-            f"{prefix}_size": spaces.Box(
-                low=0, high=max_len, shape=(1,), dtype=np.int32
-            ),
-            f"{prefix}_card_ids": spaces.Box(
-                low=0, high=CARD_ID_HIGH, shape=(max_len,), dtype=np.int32
-            ),
-            f"{prefix}_enhancements": spaces.Box(
-                low=0, high=CARD_ENHANCEMENT_HIGH, shape=(max_len,), dtype=np.int32
-            ),
-            f"{prefix}_editions": spaces.Box(
-                low=0, high=CARD_EDITION_HIGH, shape=(max_len,), dtype=np.int32
-            ),
-            f"{prefix}_mask": spaces.Box(
-                low=0, high=1, shape=(max_len,), dtype=np.int32
-            ),
-        }
+def _card_pile_subspaces(max_len: int, prefix: str) -> dict[str, spaces.Box]:
+    """Boxes for a padded card pile (hand or deck); no debuff flags."""
+    return {
+        f"{prefix}_size": spaces.Box(
+            low=0, high=max_len, shape=(1,), dtype=np.int32
+        ),
+        f"{prefix}_card_ids": spaces.Box(
+            low=0, high=CARD_ID_HIGH, shape=(max_len,), dtype=np.int32
+        ),
+        f"{prefix}_enhancements": spaces.Box(
+            low=0, high=CARD_ENHANCEMENT_HIGH, shape=(max_len,), dtype=np.int32
+        ),
+        f"{prefix}_editions": spaces.Box(
+            low=0, high=CARD_EDITION_HIGH, shape=(max_len,), dtype=np.int32
+        ),
+        f"{prefix}_mask": spaces.Box(
+            low=0, high=1, shape=(max_len,), dtype=np.int32
+        ),
+    }
+
+
+def _card_pile_space(max_len: int, prefix: str) -> spaces.Dict:
+    return spaces.Dict(_card_pile_subspaces(max_len, prefix))
+
+
+def _hand_obs_space() -> spaces.Dict:
+    """Hand pile plus per-slot debuff flags (boss effects apply to hand only)."""
+    sub = _card_pile_subspaces(MAX_HAND_LENGTH, "hand")
+    sub["hand_is_debuffed"] = spaces.Box(
+        low=0, high=1, shape=(MAX_HAND_LENGTH,), dtype=np.int32
     )
+    return spaces.Dict(sub)
 
 
 def _joker_space() -> spaces.Dict:
@@ -251,8 +265,8 @@ def build_observation_space() -> spaces.Dict:
                 shape=(1,),
                 dtype=np.int32,
             ),
-            "hand": _hand_space(MAX_HAND_LENGTH, "hand"),
-            "deck": _hand_space(MAX_DECK_LENGTH, "deck"),
+            "hand": _hand_obs_space(),
+            "deck": _card_pile_space(MAX_DECK_LENGTH, "deck"),
             "jokers": _joker_space(),
             "play_remaining": spaces.Box(
                 low=0, high=np.iinfo(np.int32).max, shape=(1,), dtype=np.int32
