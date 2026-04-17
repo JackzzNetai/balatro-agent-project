@@ -16,7 +16,7 @@ class PPOConfig:
     # PPO
     lr: float = 2.5e-4
     gamma: float = 1.0
-    gae_lambda: float = 0.95
+    gae_lambda: float = 0.97
     clip_eps: float = 0.2
     ppo_epochs: int = 4
     num_minibatches: int = 4

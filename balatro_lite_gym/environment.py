@@ -349,6 +349,10 @@ class BalatroEnv(Env):
             raise RuntimeError("internal error: _snapshot unset; call reset() first")
         return snapshot_to_obs_dict(self._snapshot)
 
+    def _invalid_action_step(self) -> tuple[dict, float, bool, bool, dict]:
+        """Invalid selection or illegal discard: small penalty, episode continues, state unchanged."""
+        return self._get_obs(), -0.1, False, False, self._info()
+
     def _calculate_score(self, selected_cards: list[Card]) -> int:
         assert self._snapshot is not None
         return score_play(selected_cards, self._snapshot, self.np_random)
@@ -375,7 +379,7 @@ class BalatroEnv(Env):
         indices = _selected_indices(selection, len(hand))
 
         if _is_invalid_selection(indices):
-            return self._get_obs(), -1, False, False, self._info()
+            return self._invalid_action_step()
 
         if action_type == 1:
             if snap.play_remaining == 0:
@@ -384,7 +388,7 @@ class BalatroEnv(Env):
                 )
         elif action_type == 0:
             if snap.discard_remaining == 0:
-                return self._get_obs(), -1, False, False, self._info()
+                return self._invalid_action_step()
         else:
             raise ValueError(f"invalid action_type: {action_type!r}")
 

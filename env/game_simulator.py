@@ -115,23 +115,29 @@ class GameSimulator:
         action: dict,
         *,
         deck: Literal["summary", "full"] = "summary",
+        print_pre: bool = True,
+        print_post: bool = False,
+        print_post_on_terminal: bool = True,
     ) -> StepOutcome:
-        """If *action* is valid for the current :attr:`info` ``['snapshot']``, :meth:`step`, then print state.
+        """Validate *action*, optionally print snapshot(s), then :meth:`step` if valid.
 
-        Invalid actions print a ``(hint) …`` line and do **not** call :meth:`~environment.BalatroEnv.step`.
+        By default prints **pre-step** snapshot once, then the action line. Invalid actions print a
+        ``(hint) …`` line and do **not** call :meth:`~environment.BalatroEnv.step`.
 
-        Always prints **pre-step** snapshot and the action line first; after a valid step, prints
-        **post-step** snapshot as before.
+        After a valid step, **post-step** snapshot is printed only if ``print_post`` is true, or if
+        ``print_post_on_terminal`` and the episode terminated (so the final board is shown once).
         """
         snap = self.info["snapshot"]
-        self.print_info_snapshot(deck=deck)
+        if print_pre:
+            self.print_info_snapshot(deck=deck)
         print(_format_action_for_print(action, snap))
         hint = _hint_if_action_invalid(action, snap)
         if hint is not None:
             print(f"(hint) {hint}")
             return StepOutcome(False)
         self.obs, reward, terminated, _truncated, self.info = self.env.step(action)
-        self.print_info_snapshot(deck=deck)
+        if print_post or (print_post_on_terminal and terminated):
+            self.print_info_snapshot(deck=deck)
         cw = self.info.get("combat_won") if terminated else None
         return StepOutcome(True, bool(terminated), cw, float(reward))
 

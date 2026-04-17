@@ -20,7 +20,7 @@ def _select_indices(*indices: int):
     return s
 
 
-def test_invalid_selection_no_op_reward_minus_one_terminated_false():
+def test_invalid_selection_no_op_reward_small_penalty_terminated_false():
     snap = GameSnapshot(
         target_score=0,
         current_score=100,
@@ -39,7 +39,7 @@ def test_invalid_selection_no_op_reward_minus_one_terminated_false():
     obs, r, term, trunc, info = env.step(
         {"selection": _zeros_selection(), "action_type": 0}
     )
-    assert r == -1
+    assert r == -0.1
     assert term is False
     assert trunc is False
     assert info["snapshot"] is env._snapshot
@@ -181,7 +181,7 @@ def test_discard_remaining_zero_no_op_like_invalid_selection():
     obs, r, term, trunc, info = env.step(
         {"selection": _select_indices(0), "action_type": 0}
     )
-    assert r == -1
+    assert r == -0.1
     assert term is False
     assert info["snapshot"] is env._snapshot
     assert (len(env._snapshot.hand), env._snapshot.discard_remaining) == before
