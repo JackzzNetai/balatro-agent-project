@@ -74,9 +74,11 @@ class GameSimulator:
         *,
         deck: Literal["summary", "full"] = "summary",
     ) -> tuple[Any, float, bool, bool, dict]:
-        """Print a one-line action summary, :meth:`step`, then dump the resulting snapshot."""
+        """Print a one-line action summary, :meth:`step`, step reward, then dump the snapshot."""
         print(_action_line(action, self.snapshot))
         out = self.step(action)
+        _obs, reward, _term, _trunc, _info = out
+        print(f"reward: {float(reward):+.6f}")
         self.print_snapshot(deck=deck)
         return out
 

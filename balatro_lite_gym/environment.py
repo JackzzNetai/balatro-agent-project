@@ -32,8 +32,7 @@ MAX_JOKER_LENGTH = 10
 INVALID_ACTION_REWARD = -0.1
 
 # Structural potential: ``BalatroEnv._state_potential`` (suit HHI, rank HHI, straight window).
-STATE_POTENTIAL_HHI_CAP = 5**2  # max value for suit / rank Σ counts² (play is 5 cards)
-STATE_POTENTIAL_NORM = 200  # divide raw Φ by HHI_CAP then by this (vs terminal reward scale)
+STATE_POTENTIAL_NORM = 50  # scale raw weighted sum to keep PBRS comparable to terminal reward
 STATE_POTENTIAL_W_SUIT = 1.0
 STATE_POTENTIAL_W_SET = 1.0
 STATE_POTENTIAL_W_STRAIGHT = 1.0
@@ -376,11 +375,15 @@ class BalatroEnv(Env):
         return snapshot_to_obs_dict(self._snapshot)
 
     def _invalid_action_step(self) -> tuple[dict, float, bool, bool, dict]:
-        """Invalid selection or illegal discard: ``INVALID_ACTION_REWARD``, episode continues.
+        """Invalid selection or illegal discard: ``INVALID_ACTION_REWARD`` plus PBRS, episode continues.
 
-        No potential-based shaping: the snapshot is unchanged, so Φ(s') = Φ(s).
+        The snapshot is unchanged, so ``Φ(s') = Φ(s)``; reuse :attr:`_prev_potential`
+        (no :meth:`_state_potential` call). Shaping adds
+        ``shaping_gamma * Φ(s) - Φ(s)`` — zero when ``shaping_gamma == 1``.
         """
-        return self._get_obs(), INVALID_ACTION_REWARD, False, False, self._info()
+        reward = float(INVALID_ACTION_REWARD)
+        reward += self.shaping_gamma * self._prev_potential - self._prev_potential
+        return self._get_obs(), reward, False, False, self._info()
 
     def _calculate_score(self, selected_cards: list[Card]) -> int:
         assert self._snapshot is not None
@@ -390,20 +393,19 @@ class BalatroEnv(Env):
         """Potential Φ(s) for potential-based reward shaping (Ng et al.).
 
         On **valid** transitions :meth:`step` adds ``shaping_gamma * Φ(s') - Φ(s)``
-        to the step reward. **Invalid** actions return ``INVALID_ACTION_REWARD`` with
-        no shaping term.
+        to the step reward. **Invalid** actions (see :meth:`_invalid_action_step`)
+        add the same PBRS form with ``Φ(s') = Φ(s)`` using cached :attr:`_prev_potential`,
+        plus ``INVALID_ACTION_REWARD``.
 
-        Combines suit concentration (HHI of suit counts, capped at
-        ``STATE_POTENTIAL_HHI_CAP``), rank multimodality (HHI of rank counts, same
-        cap), and best 5-card straight *presence* window (squared max window sum
-        over rank presence, with Ace high wrap). Card ids use
-        ``suit = id // NUM_RANKS``, ``rank = id % NUM_RANKS``.
+        Combines suit concentration (HHI of suit counts, ``Σ n_s²``), rank
+        multimodality (HHI of rank counts, ``Σ n_r²``), and best 5-card straight
+        *presence* window (squared max window sum over rank presence, with Ace high
+        wrap). Card ids use ``suit = id // NUM_RANKS``, ``rank = id % NUM_RANKS``.
 
         ``chips × mult`` from :meth:`reset` weights: Flush (suit HHI), Three of a Kind
         (rank HHI / ``phi_sets``), Straight (straight window). Global scalars:
-        ``STATE_POTENTIAL_W_*``. The weighted sum is then divided by
-        ``STATE_POTENTIAL_HHI_CAP`` and ``STATE_POTENTIAL_NORM`` so PBRS stays modest
-        vs the win reward.
+        ``STATE_POTENTIAL_W_*``. The weighted sum is divided by
+        ``STATE_POTENTIAL_NORM`` so PBRS stays modest vs the win reward.
         """
         hand_card_ids = np.fromiter(
             (c.card_id for c in snapshot.hand), dtype=np.int32, count=len(snapshot.hand)
@@ -416,10 +418,10 @@ class BalatroEnv(Env):
         suits = valid_ids // NUM_RANKS
 
         suit_counts = np.bincount(suits, minlength=NUM_SUITS)
-        phi_suit = min(float(np.sum(suit_counts**2)), float(STATE_POTENTIAL_HHI_CAP))
+        phi_suit = float(np.sum(suit_counts**2))
 
         rank_counts = np.bincount(ranks, minlength=NUM_RANKS)
-        phi_sets = min(float(np.sum(rank_counts**2)), float(STATE_POTENTIAL_HHI_CAP))
+        phi_sets = float(np.sum(rank_counts**2))
 
         rank_present = (rank_counts > 0).astype(np.int32)
         padded_ranks = np.concatenate([rank_present, [rank_present[0]]])
@@ -433,7 +435,7 @@ class BalatroEnv(Env):
             + STATE_POTENTIAL_W_SET * self._potential_w_three_kind * phi_sets
             + STATE_POTENTIAL_W_STRAIGHT * self._potential_w_straight * phi_straight
         )
-        return raw / float(STATE_POTENTIAL_HHI_CAP) / float(STATE_POTENTIAL_NORM)
+        return raw / float(STATE_POTENTIAL_NORM)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         opts = options or {}
