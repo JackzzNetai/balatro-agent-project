@@ -442,7 +442,7 @@ class BalatroEnv(Env):
         if idx_streak is not None:
             scores.append(_score_play_for_potential(idx_streak, snapshot, self.np_random))
         raw = max(scores) + snapshot.current_score
-        return math.log10(raw)
+        return math.log10(raw) * 5
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         opts = options or {}
