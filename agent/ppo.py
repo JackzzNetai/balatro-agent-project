@@ -11,7 +11,6 @@ from torch.distributions import Categorical
 
 from environment import MAX_HAND_LENGTH
 
-from .model import CombatPPOAgent
 from .ppo_config import PPOConfig
 
 __all__ = [
@@ -64,7 +63,7 @@ def mask_logits(sel_logits: torch.Tensor, card_mask: torch.Tensor) -> torch.Tens
 
 
 def compute_log_prob_and_entropy(
-    agent: CombatPPOAgent,
+    agent: nn.Module,
     obs_batch: dict[str, torch.Tensor],
     card_sels: torch.Tensor,
     executions: torch.Tensor,
@@ -91,7 +90,7 @@ def compute_log_prob_and_entropy(
 
 
 def ppo_update(
-    agent: CombatPPOAgent,
+    agent: nn.Module,
     optimizer: torch.optim.Optimizer,
     obs_batch: dict[str, torch.Tensor],
     card_sels: torch.Tensor,

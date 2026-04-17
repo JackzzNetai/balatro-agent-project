@@ -27,6 +27,7 @@ __all__ = [
     "make_vec_async",
     "make_vec_sync",
     "CombatPPOAgent",
+    "MinimalCombatPPOAgent",
     "PPOConfig",
     "compute_log_prob_and_entropy",
     "ppo_update",
@@ -40,6 +41,10 @@ def __getattr__(name: str):
         from .model import CombatPPOAgent
 
         return CombatPPOAgent
+    if name == "MinimalCombatPPOAgent":
+        from .minimal_model import MinimalCombatPPOAgent
+
+        return MinimalCombatPPOAgent
     if name == "PPOConfig":
         from .ppo_config import PPOConfig
 
