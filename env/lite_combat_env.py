@@ -275,6 +275,8 @@ class LitePooledCombatEnv(gym.Env):
         self,
         snapshot_pool: Sequence[GameSnapshot],
         pool_seed: int = 0,
+        *,
+        shaping_gamma: float = 1.0,
     ) -> None:
         super().__init__()
         if not snapshot_pool:
@@ -285,7 +287,9 @@ class LitePooledCombatEnv(gym.Env):
         self.observation_space = build_training_observation_space()
         self.action_space = spaces.MultiBinary(MAX_HAND_LENGTH + 1)
 
-        self._env = BalatroEnv(deepcopy(self._pool[0]))
+        self._env = BalatroEnv(
+            deepcopy(self._pool[0]), shaping_gamma=float(shaping_gamma)
+        )
 
     def reset(
         self,
@@ -342,19 +346,39 @@ class LitePooledCombatEnv(gym.Env):
 def make_lite_pooled_combat_env(
     snapshot_pool: Sequence[GameSnapshot],
     pool_seed: int = 0,
+    *,
+    shaping_gamma: float = 1.0,
 ) -> LitePooledCombatEnv:
     """Factory for ``gymnasium.vector.VectorEnv``."""
-    return LitePooledCombatEnv(snapshot_pool, pool_seed=pool_seed)
+    return LitePooledCombatEnv(
+        snapshot_pool, pool_seed=pool_seed, shaping_gamma=shaping_gamma
+    )
 
 
-def make_vec_sync(snapshot_pool: Sequence[GameSnapshot], n: int, base_seed: int = 0):
+def make_vec_sync(
+    snapshot_pool: Sequence[GameSnapshot],
+    n: int,
+    base_seed: int = 0,
+    *,
+    shaping_gamma: float = 1.0,
+):
     """Build a ``SyncVectorEnv`` with ``n`` workers (single process, sequential stepping)."""
-    return _make_vec_fns(snapshot_pool, n, base_seed, sync=True)
+    return _make_vec_fns(
+        snapshot_pool, n, base_seed, sync=True, shaping_gamma=shaping_gamma
+    )
 
 
-def make_vec_async(snapshot_pool: Sequence[GameSnapshot], n: int, base_seed: int = 0):
+def make_vec_async(
+    snapshot_pool: Sequence[GameSnapshot],
+    n: int,
+    base_seed: int = 0,
+    *,
+    shaping_gamma: float = 1.0,
+):
     """Build an ``AsyncVectorEnv`` with ``n`` subprocess workers (parallel stepping)."""
-    return _make_vec_fns(snapshot_pool, n, base_seed, sync=False)
+    return _make_vec_fns(
+        snapshot_pool, n, base_seed, sync=False, shaping_gamma=shaping_gamma
+    )
 
 
 def _make_vec_fns(
@@ -363,9 +387,15 @@ def _make_vec_fns(
     base_seed: int,
     *,
     sync: bool,
+    shaping_gamma: float = 1.0,
 ) -> gym.vector.VectorEnv:
     fns = [
-        partial(make_lite_pooled_combat_env, snapshot_pool, pool_seed=base_seed + i)
+        partial(
+            make_lite_pooled_combat_env,
+            snapshot_pool,
+            pool_seed=base_seed + i,
+            shaping_gamma=shaping_gamma,
+        )
         for i in range(n)
     ]
     if sync:
@@ -379,6 +409,7 @@ def make_vec(
     base_seed: int = 0,
     *,
     backend: str = "async",
+    shaping_gamma: float = 1.0,
 ) -> gym.vector.VectorEnv:
     """Build a vector env over ``snapshot_pool`` (one ``LitePooledCombatEnv`` per worker).
 
@@ -389,6 +420,8 @@ def make_vec(
         base_seed: Worker ``i`` uses ``pool_seed=base_seed+i`` for pool draw / ordering.
         backend: ``\"async\"`` (default) for ``AsyncVectorEnv``, or ``\"sync\"`` for
             ``SyncVectorEnv`` (debug / no multiprocessing).
+        shaping_gamma: PBRS discount in underlying :class:`~environment.BalatroEnv`; match
+            PPO ``gamma`` for standard potential-based shaping (Ng et al.).
 
     Returns:
         A ``gymnasium.vector.VectorEnv`` instance.
@@ -396,7 +429,13 @@ def make_vec(
     b = backend.lower().strip()
     if b not in ("async", "sync"):
         raise ValueError(f"backend must be 'async' or 'sync', got {backend!r}")
-    return _make_vec_fns(snapshot_pool, n, base_seed, sync=(b == "sync"))
+    return _make_vec_fns(
+        snapshot_pool,
+        n,
+        base_seed,
+        sync=(b == "sync"),
+        shaping_gamma=shaping_gamma,
+    )
 
 
 # -----------------------------------------------------------------------------

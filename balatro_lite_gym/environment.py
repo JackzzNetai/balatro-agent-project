@@ -28,6 +28,16 @@ MAX_HAND_LENGTH = 20
 MAX_DECK_LENGTH = 100
 MAX_JOKER_LENGTH = 10
 
+# Invalid action (snapshot unchanged): reward for that step.
+INVALID_ACTION_REWARD = -0.1
+
+# Structural potential: ``BalatroEnv._state_potential`` (suit HHI, rank HHI, straight window).
+STATE_POTENTIAL_HHI_CAP = 5**2  # max value for suit / rank Σ counts² (play is 5 cards)
+STATE_POTENTIAL_NORM = 200  # divide raw Φ by HHI_CAP then by this (vs terminal reward scale)
+STATE_POTENTIAL_W_SUIT = 1.0
+STATE_POTENTIAL_W_SET = 1.0
+STATE_POTENTIAL_W_STRAIGHT = 1.0
+
 # Padding convention: invalid slots are zeros; `*_mask` is 1 for real entries, 0 for pad.
 # `*_size` is the true count of entries (capped at the corresponding MAX_*_LENGTH for the vector).
 
@@ -85,6 +95,13 @@ def _draw_until_hand_size(
 def _terminal_reward(play_remaining: int, current_score: int) -> float:
     """Win-only terminal shaping: play_remaining + sqrt(log10(current_score))."""
     return play_remaining + math.sqrt(math.log10(current_score))
+
+
+def _poker_hand_chips_times_mult(snapshot: GameSnapshot, hand: HandType) -> float:
+    """Chips × mult for the poker-hand line ``hand`` at ``snapshot.hand_levels``."""
+    level = snapshot.hand_levels[int(hand)]
+    c, m = chips_mult_for_hand_level(hand, level)
+    return float(c * m)
 
 
 # -----------------------------------------------------------------------------
@@ -321,11 +338,15 @@ class BalatroEnv(Env):
     On **terminal** steps only, ``info`` also contains ``combat_won`` (``True`` if the
     blind was beaten, ``False`` on terminal loss). Non-terminal steps and ``reset``
     return only ``snapshot``.
+
+    **``shaping_gamma``:** PBRS coefficient in ``r + γ Φ(s') - Φ(s)``; set equal to
+    the learner discount (e.g. ``make_vec(..., shaping_gamma=cfg.gamma)``) for the usual
+    policy-invariant shaping.
     """
 
     metadata = {"render_modes": []}
 
-    def __init__(self, snapshot: GameSnapshot) -> None:
+    def __init__(self, snapshot: GameSnapshot, *, shaping_gamma: float = 1.0) -> None:
         super().__init__()
         self.observation_space = build_observation_space()
         self.action_space = spaces.Dict(
@@ -334,8 +355,13 @@ class BalatroEnv(Env):
                 "action_type": spaces.Discrete(2),
             }
         )
+        self.shaping_gamma = float(shaping_gamma)
         self._init_snapshot_template: GameSnapshot = copy.deepcopy(snapshot)
         self._snapshot: GameSnapshot | None = None
+        self._prev_potential: float = 0.0
+        self._potential_w_flush: float = 0.0
+        self._potential_w_three_kind: float = 0.0
+        self._potential_w_straight: float = 0.0
 
     def _info(self, *, terminal: bool = False, combat_won: bool = False) -> dict:
         assert self._snapshot is not None
@@ -350,12 +376,64 @@ class BalatroEnv(Env):
         return snapshot_to_obs_dict(self._snapshot)
 
     def _invalid_action_step(self) -> tuple[dict, float, bool, bool, dict]:
-        """Invalid selection or illegal discard: small penalty, episode continues, state unchanged."""
-        return self._get_obs(), -0.1, False, False, self._info()
+        """Invalid selection or illegal discard: ``INVALID_ACTION_REWARD``, episode continues.
+
+        No potential-based shaping: the snapshot is unchanged, so Φ(s') = Φ(s).
+        """
+        return self._get_obs(), INVALID_ACTION_REWARD, False, False, self._info()
 
     def _calculate_score(self, selected_cards: list[Card]) -> int:
         assert self._snapshot is not None
         return score_play(selected_cards, self._snapshot, self.np_random)
+
+    def _state_potential(self, snapshot: GameSnapshot) -> float:
+        """Potential Φ(s) for potential-based reward shaping (Ng et al.).
+
+        On **valid** transitions :meth:`step` adds ``shaping_gamma * Φ(s') - Φ(s)``
+        to the step reward. **Invalid** actions return ``INVALID_ACTION_REWARD`` with
+        no shaping term.
+
+        Combines suit concentration (HHI of suit counts, capped at
+        ``STATE_POTENTIAL_HHI_CAP``), rank multimodality (HHI of rank counts, same
+        cap), and best 5-card straight *presence* window (squared max window sum
+        over rank presence, with Ace high wrap). Card ids use
+        ``suit = id // NUM_RANKS``, ``rank = id % NUM_RANKS``.
+
+        ``chips × mult`` from :meth:`reset` weights: Flush (suit HHI), Three of a Kind
+        (rank HHI / ``phi_sets``), Straight (straight window). Global scalars:
+        ``STATE_POTENTIAL_W_*``. The weighted sum is then divided by
+        ``STATE_POTENTIAL_HHI_CAP`` and ``STATE_POTENTIAL_NORM`` so PBRS stays modest
+        vs the win reward.
+        """
+        hand_card_ids = np.fromiter(
+            (c.card_id for c in snapshot.hand), dtype=np.int32, count=len(snapshot.hand)
+        )
+        valid_ids = hand_card_ids[hand_card_ids >= 0]
+        if len(valid_ids) == 0:
+            return 0.0
+
+        ranks = valid_ids % NUM_RANKS
+        suits = valid_ids // NUM_RANKS
+
+        suit_counts = np.bincount(suits, minlength=NUM_SUITS)
+        phi_suit = min(float(np.sum(suit_counts**2)), float(STATE_POTENTIAL_HHI_CAP))
+
+        rank_counts = np.bincount(ranks, minlength=NUM_RANKS)
+        phi_sets = min(float(np.sum(rank_counts**2)), float(STATE_POTENTIAL_HHI_CAP))
+
+        rank_present = (rank_counts > 0).astype(np.int32)
+        padded_ranks = np.concatenate([rank_present, [rank_present[0]]])
+        window = np.ones(5, dtype=np.int32)
+        window_sums = np.convolve(padded_ranks, window, mode="valid")
+        max_straight_len = int(np.max(window_sums))
+        phi_straight = float(max_straight_len**2)
+
+        raw = (
+            STATE_POTENTIAL_W_SUIT * self._potential_w_flush * phi_suit
+            + STATE_POTENTIAL_W_SET * self._potential_w_three_kind * phi_sets
+            + STATE_POTENTIAL_W_STRAIGHT * self._potential_w_straight * phi_straight
+        )
+        return raw / float(STATE_POTENTIAL_HHI_CAP) / float(STATE_POTENTIAL_NORM)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         opts = options or {}
@@ -367,6 +445,16 @@ class BalatroEnv(Env):
             self._snapshot = src
         else:
             self._snapshot = copy.deepcopy(self._init_snapshot_template)
+        self._potential_w_flush = _poker_hand_chips_times_mult(
+            self._snapshot, HandType.FLUSH
+        )
+        self._potential_w_three_kind = _poker_hand_chips_times_mult(
+            self._snapshot, HandType.THREE_OF_A_KIND
+        )
+        self._potential_w_straight = _poker_hand_chips_times_mult(
+            self._snapshot, HandType.STRAIGHT
+        )
+        self._prev_potential = self._state_potential(self._snapshot)
         return self._get_obs(), self._info()
 
     def step(self, action):
@@ -415,6 +503,10 @@ class BalatroEnv(Env):
                 hand, snap.deck, snap.player_hand_size, self.np_random
             )
             reward = 0.0
+
+        phi_prime = self._state_potential(snap)
+        reward += self.shaping_gamma * phi_prime - self._prev_potential
+        self._prev_potential = phi_prime
 
         return self._get_obs(), reward, terminated, False, self._info(
             terminal=terminated, combat_won=reached_target
