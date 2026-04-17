@@ -6,11 +6,11 @@ vector env, no replay buffer—just a single env instance and the weights you pa
 
 Run from repo root::
 
-    python agent/interpret_model.py path/to/combat_ppo_iter_100.pt path/to/snapshot.json
+    python env/interpret_model.py path/to/combat_ppo_iter_100.pt path/to/snapshot.json
 
 Options::
 
-    python agent/interpret_model.py ckpt.pt snap.json --seed 0 --stochastic
+    python env/interpret_model.py ckpt.pt snap.json --seed 0 --stochastic
 """
 
 from __future__ import annotations

@@ -421,11 +421,9 @@ def chips_mult_for_hand_level(hand: HandType, level: int) -> tuple[int, int]:
 
 
 def hand_debuff_mask(snapshot: GameSnapshot) -> list[bool]:
-    """Per-hand-slot debuff flags aligned with observation padding (length ``MAX_HAND_LENGTH``).
+    """Per-hand-slot debuff flags, length ``len(snapshot.hand)`` (one entry per card).
 
-    Index ``i`` corresponds to ``snapshot.hand[i]`` when ``i < len(snapshot.hand)``; padded
-    slots are ``False``. Stub: all ``False`` until debuff rules exist in this gym.
+    :class:`~environment.BalatroEnv` pads this vector to ``MAX_HAND_LENGTH`` when building
+    observations. Stub: all ``False`` until debuff rules exist in this gym.
     """
-    from environment import MAX_HAND_LENGTH
-
-    return [False] * MAX_HAND_LENGTH
+    return [False] * len(snapshot.hand)

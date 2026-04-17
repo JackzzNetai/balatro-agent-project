@@ -154,7 +154,15 @@ def snapshot_to_obs_dict(snapshot: GameSnapshot) -> dict:
     h_size, h_ids, h_enh, h_ed, h_mask = _encode_card_pile(snapshot.hand, MAX_HAND_LENGTH)
     d_size, d_ids, d_enh, d_ed, d_mask = _encode_card_pile(snapshot.deck, MAX_DECK_LENGTH)
     j_size, j_ids, j_ed, j_mask = _encode_jokers(snapshot.jokers, MAX_JOKER_LENGTH)
-    h_debuff = np.array(hand_debuff_mask(snapshot), dtype=np.int32)
+    debuff_slots = hand_debuff_mask(snapshot)
+    n_hand = len(snapshot.hand)
+    if len(debuff_slots) != n_hand:
+        raise ValueError(
+            f"hand_debuff_mask length {len(debuff_slots)} != len(snapshot.hand) {n_hand}"
+        )
+    h_debuff = np.zeros(MAX_HAND_LENGTH, dtype=np.int32)
+    for i in range(n_hand):
+        h_debuff[i] = int(bool(debuff_slots[i]))
     return {
         "target_score": _scalar_int(snapshot.target_score),
         "current_score": _scalar_int(snapshot.current_score),

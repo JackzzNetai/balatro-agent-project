@@ -1,4 +1,4 @@
-"""Optional debug / REPL helpers for ``balatro_lite_gym``. Not used in training hot paths."""
+"""Optional debug / REPL helpers for snapshots and combat state. Not used in training hot paths."""
 
 from __future__ import annotations
 
@@ -25,7 +25,12 @@ from defs import (
     NUM_SUITS,
 )
 from engine import Card, GameSnapshot, Joker
-from util import chips_mult_for_hand_level, rank_from_card_id, suit_from_card_id
+from util import (
+    chips_mult_for_hand_level,
+    hand_debuff_mask,
+    rank_from_card_id,
+    suit_from_card_id,
+)
 
 _SUIT_GLYPH: dict[int, str] = {0: "♣", 1: "♦", 2: "♥", 3: "♠"}
 
@@ -63,21 +68,29 @@ def _cell(s: str, w: int) -> str:
     return s[: max(1, w - 1)] + "…"
 
 
-def _format_hand_table(hand: list[Card]) -> list[str]:
+def _format_hand_table(hand: list[Card], debuff_mask: list[bool]) -> list[str]:
     """Column-per-card layout (same idea as ``print_combat_state`` hand block)."""
     lines: list[str] = []
     if not hand:
         lines.append("  (no cards in hand)")
+        lines.append("  debuff (util.hand_debuff_mask): (no slots)")
         return lines
+
+    if len(debuff_mask) != len(hand):
+        raise ValueError(
+            f"hand_debuff_mask length {len(debuff_mask)} != len(hand) {len(hand)}"
+        )
 
     cols: list[dict[str, str]] = []
     for i, c in enumerate(hand):
+        debuffed = bool(debuff_mask[i])
         cols.append(
             {
                 "slot": str(i),
                 "card": _card_face(c.card_id),
                 "enhancement": _enhancement_str(c),
                 "edition": _edition_str(c),
+                "debuff": "❌" if debuffed else "",
             },
         )
 
@@ -86,6 +99,7 @@ def _format_hand_table(hand: list[Card]) -> list[str]:
         ("card", "card"),
         ("enhancement", "enhancement"),
         ("edition", "edition"),
+        ("debuff", "debuff"),
     ]
     w_label = max(len(lbl) for _, lbl in row_spec)
     n = len(cols)
@@ -189,7 +203,8 @@ def format_snapshot(
 
     lines.append("")
     lines.append("=== Hand ===")
-    lines.extend(_format_hand_table(snapshot.hand))
+    _debuff = hand_debuff_mask(snapshot)
+    lines.extend(_format_hand_table(snapshot.hand, _debuff))
 
     lines.append("")
     lines.append("=== Jokers ===")

@@ -1,5 +1,5 @@
 from defs import BossBlind, HandType, NO_BOSS_BLIND_ID
-from debug import format_snapshot
+from env.debug import format_snapshot
 from engine import Card, Joker
 from utils import minimal_snapshot
 
