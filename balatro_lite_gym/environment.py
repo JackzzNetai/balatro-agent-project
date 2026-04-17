@@ -5,6 +5,7 @@ import math
 
 import numpy as np
 from gymnasium import Env, spaces
+from gymnasium.error import ResetNeeded
 
 from defs import (
     CARD_EDITION_HIGH,
@@ -82,7 +83,7 @@ def _draw_until_hand_size(
 
 
 def _terminal_reward(play_remaining: int, current_score: int) -> float:
-    """Episode-end reward: play_remaining + sqrt(log10(current_score))."""
+    """Win-only terminal shaping: play_remaining + sqrt(log10(current_score))."""
     return play_remaining + math.sqrt(math.log10(current_score))
 
 
@@ -295,16 +296,17 @@ def build_observation_space() -> spaces.Dict:
 class BalatroEnv(Env):
     """Balatro-Lite Gymnasium environment.
 
-    **Construction:** pass a ``GameSnapshot``. The env keeps ``_init_snapshot_template``
-    as a ``deepcopy`` (frozen baseline for bare ``reset``) and aliases ``_snapshot`` to
-    your object until the next ``reset`` replaces it—only this env should mutate that
-    object while aliased.
+    **Construction:** pass a ``GameSnapshot``. Only ``_init_snapshot_template`` is set
+    (a ``deepcopy``); there is **no** active episode until :meth:`reset`.
+
+    **Gymnasium contract:** call :meth:`reset` before the first :meth:`step`. The first
+    observation comes from ``reset``, not from the constructor.
 
     **``reset(seed, options)``:** ``seed=None`` picks a random integer seed (same rule as
     Gymnasium RNG setup). Pass ``options["snapshot"] = S`` to install a new layout:
     ``_init_snapshot_template = deepcopy(S)``, ``_snapshot = S`` (reference). Omit
-    snapshot or pass ``None`` to set ``_snapshot = deepcopy(_init_snapshot_template)``
-    (fresh episode from the last installed template, or the constructor baseline).
+    ``snapshot`` to set ``_snapshot = deepcopy(_init_snapshot_template)`` (fresh episode
+    from the last installed template, or the constructor baseline).
 
     **``info``:** ``reset`` and ``step`` return ``info["snapshot"]`` — the live
     :class:`~engine.GameSnapshot` (same object as ``_snapshot`` after the transition).
@@ -325,19 +327,22 @@ class BalatroEnv(Env):
             }
         )
         self._init_snapshot_template: GameSnapshot = copy.deepcopy(snapshot)
-        self._snapshot: GameSnapshot = snapshot
-        super().reset(seed=_resolve_seed(None), options=None)
+        self._snapshot: GameSnapshot | None = None
 
     def _info(self, *, terminal: bool = False, combat_won: bool = False) -> dict:
+        assert self._snapshot is not None
         out: dict = {"snapshot": self._snapshot}
         if terminal:
             out["combat_won"] = bool(combat_won)
         return out
 
     def _get_obs(self) -> dict:
+        if self._snapshot is None:
+            raise RuntimeError("internal error: _snapshot unset; call reset() first")
         return snapshot_to_obs_dict(self._snapshot)
 
     def _calculate_score(self, selected_cards: list[Card]) -> int:
+        assert self._snapshot is not None
         return score_play(selected_cards, self._snapshot, self.np_random)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
@@ -353,6 +358,8 @@ class BalatroEnv(Env):
         return self._get_obs(), self._info()
 
     def step(self, action):
+        if self._snapshot is None:
+            raise ResetNeeded("Call env.reset() before step().")
         selection = action["selection"]
         action_type = action["action_type"]
         snap = self._snapshot
@@ -386,7 +393,11 @@ class BalatroEnv(Env):
         reached_target = snap.current_score >= snap.target_score
         terminated = reached_target or snap.play_remaining == 0
         if terminated:
-            reward = _terminal_reward(snap.play_remaining, snap.current_score)
+            reward = (
+                _terminal_reward(snap.play_remaining, snap.current_score)
+                if reached_target
+                else 0.0
+            )
         else:
             _draw_until_hand_size(
                 hand, snap.deck, snap.player_hand_size, self.np_random

@@ -98,7 +98,7 @@ def test_valid_play_terminated_skips_draw():
     )
     # Played Card(0,0,0): Plain (NONE); Ace rank chips 11 + hand line chips 5 → 16; mult 1
     assert env._snapshot.current_score == 116
-    assert r == pytest.approx(0.0 + math.sqrt(math.log10(116.0)))
+    assert r == 0.0  # terminal loss: no win shaping
     assert term is True
     assert trunc is False
     assert info["snapshot"] is env._snapshot
