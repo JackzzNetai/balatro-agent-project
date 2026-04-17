@@ -40,6 +40,39 @@ class HandType(IntEnum):
     FLUSH_FIVE = 11
 
 
+# Base chips and mult at level 1 (Balatro wiki “Base Scoring”).
+POKER_HAND_BASE_CHIPS_MULT: dict[HandType, tuple[int, int]] = {
+    HandType.HIGH_CARD: (5, 1),
+    HandType.PAIR: (10, 2),
+    HandType.TWO_PAIR: (20, 2),
+    HandType.THREE_OF_A_KIND: (30, 3),
+    HandType.STRAIGHT: (30, 4),
+    HandType.FLUSH: (35, 4),
+    HandType.FULL_HOUSE: (40, 4),
+    HandType.FOUR_OF_A_KIND: (60, 7),
+    HandType.STRAIGHT_FLUSH: (100, 8),
+    HandType.FIVE_OF_A_KIND: (120, 12),
+    HandType.FLUSH_HOUSE: (140, 14),
+    HandType.FLUSH_FIVE: (160, 16),
+}
+
+# Per level above 1: add (Δchips, Δmult) from each hand’s planet (wiki planet rows).
+POKER_HAND_LEVEL_UP_CHIPS_MULT: dict[HandType, tuple[int, int]] = {
+    HandType.HIGH_CARD: (10, 1),
+    HandType.PAIR: (15, 1),
+    HandType.TWO_PAIR: (20, 1),
+    HandType.THREE_OF_A_KIND: (20, 2),
+    HandType.STRAIGHT: (30, 3),
+    HandType.FLUSH: (15, 2),
+    HandType.FULL_HOUSE: (25, 2),
+    HandType.FOUR_OF_A_KIND: (30, 3),
+    HandType.STRAIGHT_FLUSH: (40, 4),
+    HandType.FIVE_OF_A_KIND: (35, 3),
+    HandType.FLUSH_HOUSE: (40, 4),
+    HandType.FLUSH_FIVE: (50, 3),
+}
+
+
 # Human-readable labels (wiki English names).
 HAND_TYPE_LABELS: dict[HandType, str] = {
     HandType.HIGH_CARD: "High Card",

@@ -15,7 +15,7 @@ from util import card_id_from_suit_rank
 
 
 def _snap(
-    hand_levels: dict[int, list[int]],
+    hand_levels: dict[int, int],
     jokers: list[Joker],
     *,
     hand: list[Card] | None = None,
@@ -45,7 +45,7 @@ def _cid(suit: int, rank: int) -> int:
 
 
 def test_joker_independent_plus_four_mult():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(3, 0), CardEnhancement.NONE, 0)]  # Ace spades
     base = score_play(played, _snap(levels, []), np.random.default_rng(0))
     with_j = score_play(
@@ -53,22 +53,22 @@ def test_joker_independent_plus_four_mult():
         _snap(levels, [Joker(int(JokerId.JOKER), 0)]),
         np.random.default_rng(0),
     )
-    assert base == 11  # rank chips only
-    assert with_j == 55  # 11 * (1 + 4)
+    assert base == 16  # hand L1 +5 + rank 11
+    assert with_j == 80  # 16 * (1 + 4)
 
 
 def test_jolly_joker_pair_adds_eight_mult():
-    levels = {int(HandType.PAIR): [0, 0]}
+    levels = {int(HandType.PAIR): 1}
     played = [
         Card(_cid(0, 12), CardEnhancement.NONE, 0),  # K♣
         Card(_cid(1, 12), CardEnhancement.NONE, 0),  # K♦
     ]
     s = _snap(levels, [Joker(int(JokerId.JOLLY_JOKER), 0)])
-    assert score_play(played, s, np.random.default_rng(0)) == 180  # 20 chips * 9 mult
+    assert score_play(played, s, np.random.default_rng(0)) == 300  # (10+10) chips * (2+6) mult
 
 
 def test_half_joker_three_or_fewer_cards():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 0), CardEnhancement.NONE, 0)]  # A♣
     assert (
         score_play(
@@ -76,12 +76,12 @@ def test_half_joker_three_or_fewer_cards():
             _snap(levels, [Joker(int(JokerId.HALF_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 231
-    )  # 11 * (1 + 20)
+        == 336
+    )  # (5+11) * (1 + 20)
 
 
 def test_banner_discard_remaining_chips():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 0), CardEnhancement.NONE, 0)]
     assert (
         score_play(
@@ -89,12 +89,12 @@ def test_banner_discard_remaining_chips():
             _snap(levels, [Joker(int(JokerId.BANNER), 0)], discard_remaining=2),
             np.random.default_rng(0),
         )
-        == 71
-    )  # (11 + 60) * 1
+        == 76
+    )  # (5+11 + 60) * 1
 
 
 def test_mystic_summit_zero_discards():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 0), CardEnhancement.NONE, 0)]
     assert (
         score_play(
@@ -102,12 +102,12 @@ def test_mystic_summit_zero_discards():
             _snap(levels, [Joker(int(JokerId.MYSTIC_SUMMIT), 0)], discard_remaining=0),
             np.random.default_rng(0),
         )
-        == 176
-    )  # 11 * (1 + 15)
+        == 256
+    )  # (5+11) * (1 + 15)
 
 
 def test_blue_joker_deck_chips():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 0), CardEnhancement.NONE, 0)]
     deck = [Card(i, 0, 0) for i in range(5)]
     assert (
@@ -116,21 +116,21 @@ def test_blue_joker_deck_chips():
             _snap(levels, [Joker(int(JokerId.BLUE_JOKER), 0)], deck=deck),
             np.random.default_rng(0),
         )
-        == 21
-    )  # (11 + 10) * 1
+        == 26
+    )  # (5+11 + 10) * 1
 
 
 def test_blackboard_empty_hand_triple_mult():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 0), CardEnhancement.NONE, 0)]
     assert (
         score_play(played, _snap(levels, [Joker(int(JokerId.BLACKBOARD), 0)], hand=[]), np.random.default_rng(0))
-        == 33
-    )  # 11 * 3
+        == 48
+    )  # (5+11) * 3
 
 
 def test_flower_pot_four_suits_multiplies():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [
         Card(_cid(0, 4), CardEnhancement.NONE, 0),  # 5♣
         Card(_cid(1, 3), CardEnhancement.NONE, 0),  # 4♦
@@ -143,12 +143,12 @@ def test_flower_pot_four_suits_multiplies():
             _snap(levels, [Joker(int(JokerId.FLOWER_POT), 0)]),
             np.random.default_rng(0),
         )
-        == 15
-    )  # highest scores alone: 5♣ → 5 chips * 3
+        == 30
+    )  # hand L1 +5; highest scores alone: 5♣ → (5+5) chips * 3
 
 
 def test_seeing_double_club_and_non_club_pair():
-    levels = {int(HandType.PAIR): [0, 0]}
+    levels = {int(HandType.PAIR): 1}
     played = [
         Card(_cid(0, 0), CardEnhancement.NONE, 0),  # A♣
         Card(_cid(2, 0), CardEnhancement.NONE, 0),  # A♥
@@ -159,12 +159,12 @@ def test_seeing_double_club_and_non_club_pair():
             _snap(levels, [Joker(int(JokerId.SEEING_DOUBLE), 0)]),
             np.random.default_rng(0),
         )
-        == 44
-    )  # 22 chips * 2
+        == 128
+    )  # (10+10+2) chips * (2+2) mult
 
 
 def test_the_duo_pair_doubles_mult():
-    levels = {int(HandType.PAIR): [0, 0]}
+    levels = {int(HandType.PAIR): 1}
     played = [
         Card(_cid(0, 12), CardEnhancement.NONE, 0),
         Card(_cid(1, 12), CardEnhancement.NONE, 0),
@@ -175,12 +175,12 @@ def test_the_duo_pair_doubles_mult():
             _snap(levels, [Joker(int(JokerId.THE_DUO), 0)]),
             np.random.default_rng(0),
         )
-        == 40
-    )  # 20 * 2
+        == 120
+    )  # (10+10) * (2*2)
 
 
 def test_the_trio_three_of_a_kind_triples_mult():
-    levels = {int(HandType.THREE_OF_A_KIND): [0, 0]}
+    levels = {int(HandType.THREE_OF_A_KIND): 1}
     played = [
         Card(_cid(0, 0), CardEnhancement.NONE, 0),
         Card(_cid(1, 0), CardEnhancement.NONE, 0),
@@ -192,12 +192,12 @@ def test_the_trio_three_of_a_kind_triples_mult():
             _snap(levels, [Joker(int(JokerId.THE_TRIO), 0)]),
             np.random.default_rng(0),
         )
-        == 99
-    )  # 33 chips * 3
+        == 567
+    )  # (30+3+3+3) chips * (3*3) mult
 
 
 def test_sly_joker_pair_adds_fifty_chips():
-    levels = {int(HandType.PAIR): [0, 0]}
+    levels = {int(HandType.PAIR): 1}
     played = [
         Card(_cid(0, 12), CardEnhancement.NONE, 0),
         Card(_cid(1, 12), CardEnhancement.NONE, 0),
@@ -208,12 +208,12 @@ def test_sly_joker_pair_adds_fifty_chips():
             _snap(levels, [Joker(int(JokerId.SLY_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 70
-    )  # (20 + 50) * 1
+        == 160
+    )  # (10+10 + 50) * 1
 
 
 def test_zany_joker_three_of_a_kind_adds_twelve_mult():
-    levels = {int(HandType.THREE_OF_A_KIND): [0, 0]}
+    levels = {int(HandType.THREE_OF_A_KIND): 1}
     played = [
         Card(_cid(0, 5), CardEnhancement.NONE, 0),
         Card(_cid(1, 5), CardEnhancement.NONE, 0),
@@ -225,12 +225,12 @@ def test_zany_joker_three_of_a_kind_adds_twelve_mult():
             _snap(levels, [Joker(int(JokerId.ZANY_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 234
-    )  # 18 chips * 13 mult
+        == 720
+    )  # (30+6+6+6) chips * (3+12) mult
 
 
 def test_acrobat_final_play_triples_mult():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 0), CardEnhancement.NONE, 0)]
     assert (
         score_play(
@@ -238,12 +238,12 @@ def test_acrobat_final_play_triples_mult():
             _snap(levels, [Joker(int(JokerId.ACROBAT), 0)], play_remaining=0),
             np.random.default_rng(0),
         )
-        == 33
-    )  # 11 * 3
+        == 48
+    )  # (5+11) * 3
 
 
 def test_misprint_independent_adds_rng_mult():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 0), CardEnhancement.NONE, 0)]
     # ``np.random.default_rng(21)`` first ``integers(0, 24)`` is 7 (Misprint INDEPENDENT).
     assert (
@@ -252,15 +252,15 @@ def test_misprint_independent_adds_rng_mult():
             _snap(levels, [Joker(int(JokerId.MISPRINT), 0)]),
             np.random.default_rng(21),
         )
-        == 88
-    )  # 11 * (1 + 7)
+        == 128
+    )  # (5+11) * (1 + 7)
 
 
 # --- On held ---
 
 
 def test_raised_fist_only_first_held_and_rank_chips_double():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     two_clubs = Card(_cid(0, 1), CardEnhancement.NONE, 0)  # 2♣
     queen = Card(_cid(0, 11), CardEnhancement.NONE, 0)  # Q♣
     king_played = Card(_cid(1, 12), CardEnhancement.NONE, 0)  # K♦
@@ -273,12 +273,12 @@ def test_raised_fist_only_first_held_and_rank_chips_double():
             _snap(levels, [Joker(int(JokerId.RAISED_FIST), 0)], hand=hand),
             np.random.default_rng(0),
         )
-        == 50
-    )  # 10 chips * (1 + 4) mult; only ``hand[0]`` triggers Raised Fist
+        == 75
+    )  # (5+10) chips * (1 + 4) mult; only ``hand[0]`` triggers Raised Fist
 
 
 def test_shoot_the_moon_queen_held():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(3, 0), CardEnhancement.NONE, 0)]  # A♠
     q = Card(_cid(0, 11), CardEnhancement.NONE, 0)
     assert (
@@ -287,12 +287,12 @@ def test_shoot_the_moon_queen_held():
             _snap(levels, [Joker(int(JokerId.SHOOT_THE_MOON), 0)], hand=[q]),
             np.random.default_rng(0),
         )
-        == 154
-    )  # 11 * (1 + 13)
+        == 224
+    )  # (5+11) * (1 + 13)
 
 
 def test_baron_each_king_multiplies():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(2, 0), CardEnhancement.NONE, 0)]  # A♥
     k1, k2 = Card(_cid(0, 12), CardEnhancement.NONE, 0), Card(_cid(1, 12), CardEnhancement.NONE, 0)
     assert (
@@ -301,15 +301,15 @@ def test_baron_each_king_multiplies():
             _snap(levels, [Joker(int(JokerId.BARON), 0)], hand=[k1, k2]),
             np.random.default_rng(0),
         )
-        == 24
-    )  # 11 * 1.5 * 1.5
+        == 36
+    )  # (5+11) * 1.5 * 1.5
 
 
 # --- More independent pattern jokers ---
 
 
 def test_mad_joker_two_pair():
-    levels = {int(HandType.TWO_PAIR): [0, 0]}
+    levels = {int(HandType.TWO_PAIR): 1}
     played = [
         Card(_cid(0, 12), CardEnhancement.NONE, 0),
         Card(_cid(1, 12), CardEnhancement.NONE, 0),
@@ -323,12 +323,12 @@ def test_mad_joker_two_pair():
             _snap(levels, [Joker(int(JokerId.MAD_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 418
-    )  # 38 chips * 11 mult
+        == 696
+    )  # (20+8+8+8+8) chips * (2+9) mult
 
 
 def test_crazy_joker_straight_adds_twelve_mult():
-    levels = {int(HandType.STRAIGHT): [0, 0]}
+    levels = {int(HandType.STRAIGHT): 1}
     played = [
         Card(_cid(0, 0), CardEnhancement.NONE, 0),
         Card(_cid(1, 1), CardEnhancement.NONE, 0),
@@ -342,12 +342,12 @@ def test_crazy_joker_straight_adds_twelve_mult():
             _snap(levels, [Joker(int(JokerId.CRAZY_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 325
-    )  # 25 chips * 13 mult
+        == 880
+    )  # (30+5) chips * (4+9) mult
 
 
 def test_droll_joker_flush_adds_ten_mult():
-    levels = {int(HandType.FLUSH): [0, 0]}
+    levels = {int(HandType.FLUSH): 1}
     played = [Card(_cid(3, r), CardEnhancement.NONE, 0) for r in (1, 3, 5, 8, 10)]
     assert (
         score_play(
@@ -355,12 +355,12 @@ def test_droll_joker_flush_adds_ten_mult():
             _snap(levels, [Joker(int(JokerId.DROLL_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 341
-    )  # 31 chips * 11 mult
+        == 924
+    )  # (35+6) chips * (4+7) mult
 
 
 def test_clever_joker_two_pair_chips():
-    levels = {int(HandType.TWO_PAIR): [0, 0]}
+    levels = {int(HandType.TWO_PAIR): 1}
     played = [
         Card(_cid(0, 12), CardEnhancement.NONE, 0),
         Card(_cid(1, 12), CardEnhancement.NONE, 0),
@@ -374,12 +374,12 @@ def test_clever_joker_two_pair_chips():
             _snap(levels, [Joker(int(JokerId.CLEVER_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 118
-    )  # (38 + 80) * 1
+        == 276
+    )  # (20+8+8+8+8 + 80) * 1
 
 
 def test_devious_joker_straight_chips():
-    levels = {int(HandType.STRAIGHT): [0, 0]}
+    levels = {int(HandType.STRAIGHT): 1}
     played = [
         Card(_cid(0, 0), CardEnhancement.NONE, 0),
         Card(_cid(1, 1), CardEnhancement.NONE, 0),
@@ -393,12 +393,12 @@ def test_devious_joker_straight_chips():
             _snap(levels, [Joker(int(JokerId.DEVIOUS_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 125
-    )  # (25 + 100) * 1
+        == 620
+    )  # (30+5 + 100) * 1
 
 
 def test_crafty_joker_flush_chips():
-    levels = {int(HandType.FLUSH): [0, 0]}
+    levels = {int(HandType.FLUSH): 1}
     played = [Card(_cid(3, r), CardEnhancement.NONE, 0) for r in (1, 3, 5, 8, 10)]
     assert (
         score_play(
@@ -406,12 +406,12 @@ def test_crafty_joker_flush_chips():
             _snap(levels, [Joker(int(JokerId.CRAFTY_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 111
-    )  # (31 + 80) * 1
+        == 584
+    )  # (35+6 + 80) * 1
 
 
 def test_wily_joker_three_of_a_kind_chips():
-    levels = {int(HandType.THREE_OF_A_KIND): [0, 0]}
+    levels = {int(HandType.THREE_OF_A_KIND): 1}
     played = [
         Card(_cid(0, 6), CardEnhancement.NONE, 0),
         Card(_cid(1, 6), CardEnhancement.NONE, 0),
@@ -425,12 +425,12 @@ def test_wily_joker_three_of_a_kind_chips():
             _snap(levels, [Joker(int(JokerId.WILY_JOKER), 0)]),
             np.random.default_rng(0),
         )
-        == 121
-    )  # (7+7+7 + 100) * 1
+        == 453
+    )  # (30+7+7+7 + 100) * 1
 
 
 def test_the_order_straight_triples_mult():
-    levels = {int(HandType.STRAIGHT): [0, 0]}
+    levels = {int(HandType.STRAIGHT): 1}
     played = [
         Card(_cid(0, 0), CardEnhancement.NONE, 0),
         Card(_cid(1, 1), CardEnhancement.NONE, 0),
@@ -444,12 +444,12 @@ def test_the_order_straight_triples_mult():
             _snap(levels, [Joker(int(JokerId.THE_ORDER), 0)]),
             np.random.default_rng(0),
         )
-        == 75
-    )  # 25 * 3
+        == 660
+    )  # (30+5) * 3
 
 
 def test_the_tribe_flush_doubles_mult():
-    levels = {int(HandType.FLUSH): [0, 0]}
+    levels = {int(HandType.FLUSH): 1}
     played = [Card(_cid(3, r), CardEnhancement.NONE, 0) for r in (1, 3, 5, 8, 10)]
     assert (
         score_play(
@@ -457,12 +457,12 @@ def test_the_tribe_flush_doubles_mult():
             _snap(levels, [Joker(int(JokerId.THE_TRIBE), 0)]),
             np.random.default_rng(0),
         )
-        == 62
-    )  # 31 * 2
+        == 528
+    )  # (35+6) * 2
 
 
 def test_the_family_four_of_a_kind_quadruples_mult():
-    levels = {int(HandType.FOUR_OF_A_KIND): [0, 0]}
+    levels = {int(HandType.FOUR_OF_A_KIND): 1}
     played = [
         Card(_cid(0, 12), CardEnhancement.NONE, 0),
         Card(_cid(1, 12), CardEnhancement.NONE, 0),
@@ -476,16 +476,16 @@ def test_the_family_four_of_a_kind_quadruples_mult():
             _snap(levels, [Joker(int(JokerId.THE_FAMILY), 0)]),
             np.random.default_rng(0),
         )
-        == 160
-    )  # 40 * 4
+        == 2800
+    )  # (30+40) * 4
 
 
 # --- On scored (direct dispatch) ---
 
 
 def test_try_applying_greedy_counts_wild_as_diamond():
-    acc = ScoreAccumulator()
-    snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [])
+    acc = ScoreAccumulator(0, 1)
+    snap = _snap({int(HandType.HIGH_CARD): 1}, [])
     wild = Card(_cid(0, 5), CardEnhancement.WILD, 0)  # printed 6♣, Wild
     ctx = JokerEffectContext(
         acc=acc,
@@ -504,8 +504,8 @@ def test_try_applying_greedy_counts_wild_as_diamond():
 
 
 def test_try_applying_lusty_heart():
-    acc = ScoreAccumulator()
-    snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [])
+    acc = ScoreAccumulator(0, 1)
+    snap = _snap({int(HandType.HIGH_CARD): 1}, [])
     h = Card(_cid(2, 7), CardEnhancement.NONE, 0)  # 8♥
     ctx = JokerEffectContext(
         acc=acc,
@@ -524,8 +524,8 @@ def test_try_applying_lusty_heart():
 
 
 def test_try_applying_gluttonous_club():
-    acc = ScoreAccumulator()
-    snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [])
+    acc = ScoreAccumulator(0, 1)
+    snap = _snap({int(HandType.HIGH_CARD): 1}, [])
     x = Card(_cid(0, 4), CardEnhancement.NONE, 0)  # 5♣
     ctx = JokerEffectContext(
         acc=acc,
@@ -544,8 +544,8 @@ def test_try_applying_gluttonous_club():
 
 
 def test_try_applying_wrathful_spade():
-    acc = ScoreAccumulator()
-    snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [])
+    acc = ScoreAccumulator(0, 1)
+    snap = _snap({int(HandType.HIGH_CARD): 1}, [])
     x = Card(_cid(3, 2), CardEnhancement.NONE, 0)  # 3♠
     ctx = JokerEffectContext(
         acc=acc,
@@ -564,7 +564,7 @@ def test_try_applying_wrathful_spade():
 
 
 def test_fibonacci_scored_rank_via_score_play():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 2), CardEnhancement.NONE, 0)]  # 3♣ (Fibonacci rank)
     assert (
         score_play(
@@ -572,12 +572,12 @@ def test_fibonacci_scored_rank_via_score_play():
             _snap(levels, [Joker(int(JokerId.FIBONACCI), 0)]),
             np.random.default_rng(0),
         )
-        == 27
-    )  # 3 chips * (1 + 8) mult
+        == 72
+    )  # (5+3) chips * (1 + 8) mult
 
 
 def test_scary_face_face_card_chips():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 10), CardEnhancement.NONE, 0)]  # J♣
     assert (
         score_play(
@@ -585,12 +585,12 @@ def test_scary_face_face_card_chips():
             _snap(levels, [Joker(int(JokerId.SCARY_FACE), 0)]),
             np.random.default_rng(0),
         )
-        == 40
-    )  # (10 + 30) * 1
+        == 45
+    )  # (5+10 + 30) * 1
 
 
 def test_smiley_face_face_mult():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 10), CardEnhancement.NONE, 0)]
     assert (
         score_play(
@@ -598,12 +598,12 @@ def test_smiley_face_face_mult():
             _snap(levels, [Joker(int(JokerId.SMILEY_FACE), 0)]),
             np.random.default_rng(0),
         )
-        == 60
-    )  # 10 chips * 6 mult
+        == 90
+    )  # (5+10) chips * 6 mult
 
 
 def test_even_steven_ten_rank():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 9), CardEnhancement.NONE, 0)]  # 10♣
     assert (
         score_play(
@@ -611,12 +611,12 @@ def test_even_steven_ten_rank():
             _snap(levels, [Joker(int(JokerId.EVEN_STEVEN), 0)]),
             np.random.default_rng(0),
         )
-        == 50
-    )  # 10 * (1 + 4)
+        == 75
+    )  # (5+10) * (1 + 4)
 
 
 def test_odd_todd_nine_rank_chips():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 8), CardEnhancement.NONE, 0)]  # 9♣
     assert (
         score_play(
@@ -624,12 +624,12 @@ def test_odd_todd_nine_rank_chips():
             _snap(levels, [Joker(int(JokerId.ODD_TODD), 0)]),
             np.random.default_rng(0),
         )
-        == 40
-    )  # (9 + 31) * 1
+        == 45
+    )  # (5+9 + 31) * 1
 
 
 def test_scholar_ace_chips_and_mult():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 0), CardEnhancement.NONE, 0)]
     assert (
         score_play(
@@ -637,12 +637,12 @@ def test_scholar_ace_chips_and_mult():
             _snap(levels, [Joker(int(JokerId.SCHOLAR), 0)]),
             np.random.default_rng(0),
         )
-        == 155
-    )  # (11 + 20) * 5
+        == 180
+    )  # (5+11 + 20) * 5
 
 
 def test_walkie_talkie_ten_rank():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 9), CardEnhancement.NONE, 0)]  # 10♣
     assert (
         score_play(
@@ -650,12 +650,12 @@ def test_walkie_talkie_ten_rank():
             _snap(levels, [Joker(int(JokerId.WALKIE_TALKIE), 0)]),
             np.random.default_rng(0),
         )
-        == 100
-    )  # (10 + 10) chips * (1 + 4) mult
+        == 125
+    )  # (5+10 + 10) chips * (1 + 4) mult
 
 
 def test_walkie_talkie_pair_of_fours():
-    levels = {int(HandType.PAIR): [0, 0]}
+    levels = {int(HandType.PAIR): 1}
     played = [
         Card(_cid(0, 3), CardEnhancement.NONE, 0),
         Card(_cid(1, 3), CardEnhancement.NONE, 0),
@@ -666,12 +666,12 @@ def test_walkie_talkie_pair_of_fours():
             _snap(levels, [Joker(int(JokerId.WALKIE_TALKIE), 0)]),
             np.random.default_rng(0),
         )
-        == 252
-    )  # (4+4+10+10) chips * (1+4+4) mult
+        == 380
+    )  # (10+4+4+10+10) chips * (2+4+4) mult
 
 
 def test_arrowhead_spade_chips():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(3, 11), CardEnhancement.NONE, 0)]  # Q♠
     assert (
         score_play(
@@ -679,12 +679,12 @@ def test_arrowhead_spade_chips():
             _snap(levels, [Joker(int(JokerId.ARROWHEAD), 0)]),
             np.random.default_rng(0),
         )
-        == 60
-    )  # (10 + 50) * 1 — Queen rank uses 10 base chips
+        == 65
+    )  # (5+10 + 50) * 1 — Queen rank uses 10 base chips
 
 
 def test_onyx_agate_club_mult():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 6), CardEnhancement.NONE, 0)]  # 7♣
     assert (
         score_play(
@@ -692,12 +692,12 @@ def test_onyx_agate_club_mult():
             _snap(levels, [Joker(int(JokerId.ONYX_AGATE), 0)]),
             np.random.default_rng(0),
         )
-        == 56
-    )  # 7 * (1 + 7)
+        == 96
+    )  # (5+7) * (1 + 7)
 
 
 def test_ancient_clubs_multiplicative_per_scoring_club():
-    levels = {int(HandType.PAIR): [0, 0]}
+    levels = {int(HandType.PAIR): 1}
     played = [Card(_cid(0, 12), CardEnhancement.NONE, 0), Card(_cid(1, 12), CardEnhancement.NONE, 0)]
     assert (
         score_play(
@@ -705,12 +705,12 @@ def test_ancient_clubs_multiplicative_per_scoring_club():
             _snap(levels, [Joker(int(JokerId.ANCIENT_JOKER_CLUBS), 0)]),
             np.random.default_rng(0),
         )
-        == 30
-    )  # 20 chips, only K♣ triggers ×1.5 → 20 * 1.5 = 30
+        == 90
+    )  # (10+10) chips, only K♣ triggers ×1.5
 
 
 def test_triboulet_queen_doubles_mult():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 11), CardEnhancement.NONE, 0)]
     assert (
         score_play(
@@ -718,20 +718,20 @@ def test_triboulet_queen_doubles_mult():
             _snap(levels, [Joker(int(JokerId.TRIBOULET), 0)]),
             np.random.default_rng(0),
         )
-        == 20
-    )  # 10 chips * 2 mult
+        == 30
+    )  # (5+10) chips * 2 mult
 
 
 def test_bloodstone_heart_proc_and_no_proc():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(2, 0), CardEnhancement.NONE, 0)]  # A♥
     s = _snap(levels, [Joker(int(JokerId.BLOODSTONE), 0)])
-    assert score_play(played, s, np.random.default_rng(2)) == 16  # first random() < 0.5 → ×1.5
-    assert score_play(played, s, np.random.default_rng(0)) == 11  # first random() >= 0.5
+    assert score_play(played, s, np.random.default_rng(2)) == 24  # first random() < 0.5 → ×1.5
+    assert score_play(played, s, np.random.default_rng(0)) == 16  # first random() >= 0.5
 
 
 def test_photograph_is_noop_for_total():
-    levels = {int(HandType.HIGH_CARD): [0, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     played = [Card(_cid(0, 10), CardEnhancement.NONE, 0)]
     base = score_play(played, _snap(levels, []), np.random.default_rng(0))
     with_photo = score_play(
@@ -739,4 +739,4 @@ def test_photograph_is_noop_for_total():
         _snap(levels, [Joker(int(JokerId.PHOTOGRAPH), 0)]),
         np.random.default_rng(0),
     )
-    assert base == with_photo == 10
+    assert base == with_photo == 15

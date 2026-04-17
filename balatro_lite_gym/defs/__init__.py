@@ -29,7 +29,13 @@ from .jokers import (
     JokerId,
     NUM_JOKERS,
 )
-from .poker_hands import HAND_TYPE_COUNT, HAND_TYPE_LABELS, HandType
+from .poker_hands import (
+    HAND_TYPE_COUNT,
+    HAND_TYPE_LABELS,
+    HandType,
+    POKER_HAND_BASE_CHIPS_MULT,
+    POKER_HAND_LEVEL_UP_CHIPS_MULT,
+)
 from .rank import CARD_RANK_LABELS, NUM_RANKS, RANK_HIGH, CardRank
 from .suit import CARD_SUIT_LABELS, NUM_SUITS, SUIT_HIGH, CardSuit
 
@@ -49,6 +55,8 @@ __all__ = [
     "HAND_TYPE_COUNT",
     "HAND_TYPE_LABELS",
     "HandType",
+    "POKER_HAND_BASE_CHIPS_MULT",
+    "POKER_HAND_LEVEL_UP_CHIPS_MULT",
     "JOKER_ACTIVATION",
     "JOKER_EDITION_HIGH",
     "JOKER_ID_HIGH",

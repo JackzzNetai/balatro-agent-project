@@ -13,7 +13,7 @@ def _tiny_pool():
     from defs import HandType, JokerId
     from engine import Card, GameSnapshot, Joker
 
-    hl = {int(h): [10, 2] for h in HandType}
+    hl = {int(h): 2 for h in HandType}
     snap = GameSnapshot(
         100,
         0,

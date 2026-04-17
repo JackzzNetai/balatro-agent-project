@@ -10,6 +10,7 @@ from defs import (
     CARD_EDITION_HIGH,
     CARD_ENHANCEMENT_HIGH,
     HAND_TYPE_COUNT,
+    HandType,
     JOKER_EDITION_HIGH,
     JOKER_ID_HIGH,
     NUM_RANKS,
@@ -17,6 +18,7 @@ from defs import (
 )
 from engine import Card, GameSnapshot, Joker
 from scoring import score_play
+from util import chips_mult_for_hand_level
 
 # -----------------------------------------------------------------------------
 # Constants — observation caps (independent of transient game state)
@@ -133,20 +135,17 @@ def _encode_jokers(
     return _scalar_int(n), ids, editions, mask
 
 
-def _encode_hand_levels(hand_levels: dict[int, list[int]]) -> np.ndarray:
+def _encode_hand_levels(hand_levels: dict[int, int]) -> np.ndarray:
     out = np.zeros((HAND_TYPE_COUNT, 2), dtype=np.int32)
-    for hand_type_id, pair in hand_levels.items():
+    for hand_type_id, level in hand_levels.items():
         if not (0 <= hand_type_id < HAND_TYPE_COUNT):
             raise ValueError(
                 f"hand_levels key out of range: {hand_type_id} "
                 f"(valid 0..{HAND_TYPE_COUNT - 1})"
             )
-        if len(pair) != 2:
-            raise ValueError(
-                f"hand_levels[{hand_type_id}] must have length 2, got {len(pair)}"
-            )
-        out[hand_type_id, 0] = pair[0]
-        out[hand_type_id, 1] = pair[1]
+        c, mw = chips_mult_for_hand_level(HandType(hand_type_id), level)
+        out[hand_type_id, 0] = c
+        out[hand_type_id, 1] = int(mw)
     return out
 
 

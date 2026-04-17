@@ -32,9 +32,9 @@ class GameSnapshot:
     """Environment snapshot.
 
     ``hand_levels``: keys are ``HandType`` ints (see ``defs.HandType``);
-    each value is ``[chips, mult]`` — direct chip and **additive** mult from the
-    poker hand line for that type (not planet level indices). Scoring a play
-    requires a key for the classified hand (see ``scoring.score_play``).
+    each value is the **level** (integer ``>= 1`` per wiki). Chips and mult for
+    scoring/obs are derived via
+    :func:`util.chips_mult_for_hand_level` (see ``scoring``, ``environment``).
 
     ``blind_id``: ``defs.NO_BOSS_BLIND_ID`` (``-1``) when the round is not a boss
     blind (e.g. Small / Big); otherwise a ``defs.BossBlind`` value (``0``..``6``).
@@ -49,4 +49,4 @@ class GameSnapshot:
     play_remaining: int
     discard_remaining: int
     player_hand_size: int
-    hand_levels: Dict[int, List[int]]
+    hand_levels: Dict[int, int]

@@ -15,6 +15,7 @@ from __future__ import annotations
 from itertools import product
 
 from defs import NUM_RANKS, CardEnhancement, CardRank, CardSuit, HandType
+from defs.poker_hands import POKER_HAND_BASE_CHIPS_MULT, POKER_HAND_LEVEL_UP_CHIPS_MULT
 from engine import Card
 
 
@@ -407,3 +408,13 @@ def played_contains(played: list[Card], inner: HandType) -> bool:
         )
 
     raise AssertionError(f"unhandled HandType for played_contains: {inner!r}")
+
+
+def chips_mult_for_hand_level(hand: HandType, level: int) -> tuple[int, int]:
+    """Wiki poker-hand line chips and **total** mult for ``hand`` at ``level`` (level 1 = base)."""
+    if level < 1:
+        raise ValueError(f"hand level must be >= 1, got {level}")
+    bc, bm = POKER_HAND_BASE_CHIPS_MULT[hand]
+    dc, dm = POKER_HAND_LEVEL_UP_CHIPS_MULT[hand]
+    n = level - 1
+    return bc + n * dc, bm + n * dm

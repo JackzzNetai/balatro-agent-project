@@ -5,7 +5,8 @@ mutators like Vampire / Midas before the visible scoring pass) is **out of
 scope** for now. The pipeline follows a subset of the wiki **Activation
 Sequence**, in order:
 
-- **On scored** — poker ``hand_levels[hand]`` as ``[chips, mult]``, then each
+- **On scored** — poker ``hand_levels[hand]`` level → chips + wiki mult (via
+  :func:`util.chips_mult_for_hand_level`), then each
   **scored** card: rank chips ([Chips](https://balatrowiki.org/w/Chips)),
   enhancements, editions (Foil → Holo → Polychrome), then **On scored** jokers
   left-to-right per scored card (via :func:`joker_effects.try_applying_joker_effect`).
@@ -29,33 +30,27 @@ from numpy.random import Generator
 from defs import CardEnhancement, Edition, HandType, JokerActivation
 from engine import Card, GameSnapshot
 from joker_effects import JokerEffectContext, try_applying_joker_effect
-from util import card_rank, rank_chips, recognize_poker_hand
+from util import card_rank, chips_mult_for_hand_level, rank_chips, recognize_poker_hand
 
 
-@dataclass
+@dataclass(init=False)
 class ScoreAccumulator:
-    """Balatro-style line: final play contribution is ``chips * mult`` (then int)."""
+    """Balatro-style line: final play contribution is ``chips * mult`` (then int).
 
-    chips: int = 0
-    mult: float = 1.0
+    Construct with **two ints**: wiki poker-hand **chips** and **mult** at the moment the
+    hand is played (before card effects / jokers). ``mult`` is stored as ``float`` so
+    later steps can apply fractional multipliers (e.g. Polychrome).
+    """
+
+    chips: int
+    mult: float
+
+    def __init__(self, chips: int, mult: int) -> None:
+        self.chips = chips
+        self.mult = float(mult)
 
     def total(self) -> int:
         return int(self.chips * self.mult)
-
-
-def _hand_line_chips_mult(snapshot: GameSnapshot, hand: HandType) -> tuple[int, float]:
-    key = int(hand)
-    if key not in snapshot.hand_levels:
-        raise KeyError(
-            f"hand_levels missing key for classified hand {hand!s} (int {key}); "
-            "expected snapshot.hand_levels[int(hand)] = [chips, mult]"
-        )
-    pair = snapshot.hand_levels[key]
-    if len(pair) != 2:
-        raise ValueError(
-            f"hand_levels[{key}] must be a length-2 [chips, mult] list, got {pair!r}"
-        )
-    return int(pair[0]), float(pair[1])
 
 
 def _accumulate_on_scored_card_intrinsics(
@@ -98,15 +93,12 @@ def _scoring_on_scored(
     hand: HandType,
     scored: list[Card],
 ) -> None:
-    """Dealt-hand line: poker ``[chips, mult]`` then each scored card and its jokers.
+    """On scored: each scored card’s intrinsics and jokers (hand line already in ``acc``).
 
-    Order: add ``hand_levels[hand]`` pair → for each scored card: rank chips,
+    Order: for each scored card: rank chips,
     enhancements (Bonus / Mult / Lucky partial; no Steel), editions Foil → Holo
     → Polychrome → jokers at ``curr_activation`` L→R.
     """
-    hc, hm = _hand_line_chips_mult(snapshot, hand)
-    acc.chips += hc
-    acc.mult += hm
     for c in scored:
         _accumulate_on_scored_card_intrinsics(c, acc, rng)
         for joker in snapshot.jokers:
@@ -193,8 +185,15 @@ def score_play(
     """
     if rng is None:
         raise TypeError("score_play requires a numpy.random.Generator as rng=, not None")
-    acc = ScoreAccumulator()
     hand, scored = recognize_poker_hand(played_cards)
+    key = int(hand)
+    if key not in snapshot.hand_levels:
+        raise KeyError(
+            f"hand_levels missing key for classified hand {hand!s} (int {key}); "
+            "expected snapshot.hand_levels[int(hand)] = level (int)"
+        )
+    start_chips, start_mult = chips_mult_for_hand_level(hand, snapshot.hand_levels[key])
+    acc = ScoreAccumulator(start_chips, start_mult)
     curr_activation = JokerActivation.ON_SCORED
     _scoring_on_scored(curr_activation, played_cards, snapshot, acc, rng, hand, scored)
     curr_activation = JokerActivation.ON_HELD

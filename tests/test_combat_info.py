@@ -90,7 +90,7 @@ def test_terminal_loss_plays_exhausted_combat_flags_false():
         play_remaining=1,
         discard_remaining=2,
         player_hand_size=5,
-        hand_levels={int(HandType.HIGH_CARD): [5, 0]},
+        hand_levels={int(HandType.HIGH_CARD): 1},
     )
     env = BalatroEnv(snap)
     env.reset(seed=2)

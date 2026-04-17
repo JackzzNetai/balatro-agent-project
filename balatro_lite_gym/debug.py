@@ -20,7 +20,7 @@ from defs import (
     JokerId,
 )
 from engine import Card, GameSnapshot, Joker
-from util import rank_from_card_id, suit_from_card_id
+from util import chips_mult_for_hand_level, rank_from_card_id, suit_from_card_id
 
 _SUIT_GLYPH: dict[int, str] = {0: "♣", 1: "♦", 2: "♥", 3: "♠"}
 _DECK_PREVIEW = 8
@@ -114,9 +114,10 @@ def format_snapshot(
         lines.append("  (none)")
     else:
         for ht in sorted(snapshot.hand_levels.keys()):
-            chips, mult = snapshot.hand_levels[ht]
+            lev = snapshot.hand_levels[ht]
             label = HAND_TYPE_LABELS[HandType(ht)]
-            lines.append(f"  {label}  chips={chips}  mult={mult}")
+            wc, wm = chips_mult_for_hand_level(HandType(ht), lev)
+            lines.append(f"  {label}  level={lev}  wiki_line={wc}×{wm}")
 
     return "\n".join(lines) + "\n"
 

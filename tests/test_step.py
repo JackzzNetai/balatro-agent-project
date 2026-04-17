@@ -89,7 +89,7 @@ def test_valid_play_terminated_skips_draw():
         play_remaining=1,
         discard_remaining=2,
         player_hand_size=5,
-        hand_levels={int(HandType.HIGH_CARD): [5, 0]},
+        hand_levels={int(HandType.HIGH_CARD): 1},
     )
     env = BalatroEnv(snap)
     env.reset(seed=2)

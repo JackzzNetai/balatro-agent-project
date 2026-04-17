@@ -15,7 +15,7 @@ def test_format_snapshot_contains_core_fields_and_hand_card():
         play_remaining=4,
         discard_remaining=3,
         player_hand_size=5,
-        hand_levels={int(HandType.HIGH_CARD): [10, 1]},
+        hand_levels={int(HandType.HIGH_CARD): 2},
     )
     text = format_snapshot(snap)
     assert "target_score:      300" in text
@@ -31,8 +31,8 @@ def test_format_snapshot_contains_core_fields_and_hand_card():
     assert "--- Jokers ---" in text
     assert "Jolly Joker" in text
     assert "High Card" in text
-    assert "chips=10" in text
-    assert "mult=1" in text
+    assert "level=2" in text
+    assert "15×2" in text
 
 
 def test_format_snapshot_boss_blind_label():

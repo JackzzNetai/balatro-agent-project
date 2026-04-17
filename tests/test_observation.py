@@ -22,7 +22,7 @@ def test_snapshot_to_obs_contains_with_sample_cards():
         play_remaining=4,
         discard_remaining=3,
         player_hand_size=5,
-        hand_levels={0: [10, 1], 11: [100, 4]},
+        hand_levels={0: 2, 11: 1},
     )
     obs = snapshot_to_obs_dict(snap)
     env = BalatroEnv(snap)

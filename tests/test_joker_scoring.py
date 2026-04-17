@@ -29,7 +29,11 @@ _NON_SCORING: frozenset[JokerId] = frozenset(
 )
 
 
-def _snap(hand_levels: dict, jokers: list[Joker], hand: list[Card] | None = None) -> GameSnapshot:
+def _snap(
+    hand_levels: dict[int, int],
+    jokers: list[Joker],
+    hand: list[Card] | None = None,
+) -> GameSnapshot:
     return GameSnapshot(
         target_score=999,
         current_score=0,
@@ -57,7 +61,7 @@ def test_joker_activation_dense_and_passives():
 def test_score_play_same_with_passive_and_stub_jokers():
     """Passive jokers + M1 stubs must not alter ``score_play`` totals."""
     played = [Card(0, CardEnhancement.BONUS, 0)]
-    levels = {int(HandType.HIGH_CARD): [5, 0]}
+    levels = {int(HandType.HIGH_CARD): 1}
     rng = np.random.default_rng(0)
     empty = _snap(levels, [])
     with_jokers = _snap(
@@ -85,7 +89,7 @@ def test_independent_passes_played_cards_in_context():
     joker_effects.EFFECT_HANDLERS[jid] = capture
     try:
         played = [Card(0, CardEnhancement.NONE, 0)]
-        snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [Joker(int(jid), 0)])
+        snap = _snap({int(HandType.HIGH_CARD): 1}, [Joker(int(jid), 0)])
         score_play(played, snap, np.random.default_rng(0))
     finally:
         joker_effects.EFFECT_HANDLERS[jid] = old
@@ -93,8 +97,8 @@ def test_independent_passes_played_cards_in_context():
 
 
 def test_try_applying_skips_when_activation_none():
-    snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [])
-    acc = ScoreAccumulator()
+    snap = _snap({int(HandType.HIGH_CARD): 1}, [])
+    acc = ScoreAccumulator(0, 1)
     ctx = JokerEffectContext(
         acc=acc,
         snapshot=snap,
@@ -124,8 +128,8 @@ def test_try_applying_skips_wrong_phase():
     old = joker_effects.EFFECT_HANDLERS[jid]
     joker_effects.EFFECT_HANDLERS[jid] = spy
     try:
-        snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [])
-        acc = ScoreAccumulator()
+        snap = _snap({int(HandType.HIGH_CARD): 1}, [])
+        acc = ScoreAccumulator(0, 1)
         ctx = JokerEffectContext(
             acc=acc,
             snapshot=snap,
@@ -152,9 +156,9 @@ def test_try_applying_skips_wrong_phase():
 
 
 def test_try_applying_rejects_none_curr_activation():
-    snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [])
+    snap = _snap({int(HandType.HIGH_CARD): 1}, [])
     ctx = JokerEffectContext(
-        acc=ScoreAccumulator(),
+        acc=ScoreAccumulator(0, 1),
         snapshot=snap,
         rng=np.random.default_rng(0),
         played=[],
@@ -169,9 +173,9 @@ def test_try_applying_rejects_none_curr_activation():
 
 
 def test_try_applying_invalid_joker_id_raises():
-    snap = _snap({int(HandType.HIGH_CARD): [0, 0]}, [])
+    snap = _snap({int(HandType.HIGH_CARD): 1}, [])
     ctx = JokerEffectContext(
-        acc=ScoreAccumulator(),
+        acc=ScoreAccumulator(0, 1),
         snapshot=snap,
         rng=np.random.default_rng(0),
         played=[],
