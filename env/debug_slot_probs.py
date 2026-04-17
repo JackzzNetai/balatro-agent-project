@@ -1,7 +1,7 @@
 """One-step probe: log selection logits / P(select) / argmax vs sample (for InterpretModel debugging).
 
-Run from repo root::
-    python env/debug_slot_probs.py path/to.ckpt path/to.json [--stochastic]
+Run from repo root (defaults to **sample**, same as PPO rollouts)::
+    python env/debug_slot_probs.py path/to.ckpt path/to.json [--argmax]
 
 Colab / Jupyter: use ``env/DebugSlotProbs.ipynb`` (Drive mount + same logging).
 """
@@ -62,10 +62,10 @@ def _nested_obs_add_batch_dim(obs_raw: dict) -> dict:
 
 
 def main() -> None:
-    stochastic = "--stochastic" in sys.argv
-    args = [a for a in sys.argv[1:] if a != "--stochastic"]
+    stochastic = "--argmax" not in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--argmax"]
     if len(args) < 2:
-        print("usage: python env/debug_slot_probs.py ckpt.pt snap.json [--stochastic]")
+        print("usage: python env/debug_slot_probs.py ckpt.pt snap.json [--argmax]")
         sys.exit(1)
     ckpt_path = Path(args[0]).resolve()
     snap_path = Path(args[1]).resolve()
