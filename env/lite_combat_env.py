@@ -161,12 +161,7 @@ def adapt_lite_vector_obs(obs: dict) -> dict[str, np.ndarray]:
         np.arange(HAND_TYPE_COUNT, dtype=np.int64), (n, HAND_TYPE_COUNT)
     )
     hl_model = np.stack(
-        [
-            ht_ids,
-            np.zeros((n, HAND_TYPE_COUNT), dtype=np.int64),
-            hl[:, :, 0],
-            hl[:, :, 1],
-        ],
+        [ht_ids, hl[:, :, 0], hl[:, :, 1]],
         axis=-1,
     )
 
@@ -231,7 +226,7 @@ def build_training_observation_space() -> spaces.Dict:
             "current_score": spaces.Box(0, _i64.max, (1,), dtype=np.int64),
             "target_score": spaces.Box(0, _i64.max, (1,), dtype=np.int64),
             "hand_levels": spaces.Box(
-                0, _i64.max, (HAND_TYPE_COUNT, 4), dtype=np.int64
+                0, _i64.max, (HAND_TYPE_COUNT, 3), dtype=np.int64
             ),
             "boss_id": spaces.Box(0, int(BossBlind.THE_PLANT), (1,), dtype=np.int64),
             "boss_is_active": spaces.Box(0, 1, (1,), dtype=np.int64),

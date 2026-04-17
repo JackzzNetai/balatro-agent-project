@@ -98,7 +98,7 @@ class RunStateEmbedding(nn.Module):
 
 
 class HandLevelEmbedding(nn.Module):
-    """Hand-type rows: embed type id + project chip/mult (columns 2–3)."""
+    """Hand-type rows: embed type id + project chip/mult (columns 1–2)."""
 
     _HL_FEATS = 2
 
@@ -110,7 +110,7 @@ class HandLevelEmbedding(nn.Module):
 
     def forward(self, hand_levels: torch.Tensor) -> torch.Tensor:
         ht_ids = hand_levels[:, :, 0].long()
-        hl_feats = hand_levels[:, :, 2:].float()
+        hl_feats = hand_levels[:, :, 1:].float()
         return self.ln(self.type_emb(ht_ids) + self.level_proj(hl_feats))
 
 
