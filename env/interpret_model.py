@@ -1,8 +1,9 @@
-"""Drive one :class:`~environment.BalatroEnv` built from a snapshot JSON.
+"""Drive one combat episode using :class:`~env.game_simulator.GameSimulator` + a checkpoint.
 
-For each timestep: read the env observation, run the checkpoint policy to get an action,
-call :meth:`~environment.BalatroEnv.step` with that action, print what happened. No
-vector env, no replay buffer—just a single env instance and the weights you pass in.
+Single ``BalatroEnv`` only—no vector env and no parallel rollouts. Uses
+:class:`~env.game_simulator.GameSimulator`: :meth:`~env.game_simulator.GameSimulator.print_info_snapshot`
+after load, then each timestep runs the policy and
+:meth:`~env.game_simulator.GameSimulator.step_and_print` (validates, steps, prints snapshot).
 
 Run from repo root::
 
@@ -31,10 +32,10 @@ sys.path.insert(0, str(_REPO / "balatro_lite_gym"))
 from agent.model import CombatPPOAgent  # noqa: E402
 from agent.ppo import get_card_mask, mask_logits  # noqa: E402
 from agent.ppo_config import PPOConfig  # noqa: E402
-from env.lite_combat_env import adapt_lite_vector_obs, dict_to_tensors  # noqa: E402
-from env.snapshot_io import load_snapshot  # noqa: E402
-from environment import MAX_HAND_LENGTH, BalatroEnv  # noqa: E402
 from defs import CARD_RANK_LABELS, CardRank  # noqa: E402
+from env.game_simulator import GameSimulator  # noqa: E402
+from env.lite_combat_env import adapt_lite_vector_obs, dict_to_tensors  # noqa: E402
+from environment import MAX_HAND_LENGTH  # noqa: E402
 from util import rank_from_card_id, suit_from_card_id  # noqa: E402
 
 _SUIT_GLYPHS = "♠♥♦♣"
@@ -58,20 +59,6 @@ def _card_face(card_id: int) -> str:
     r = CardRank(rank_from_card_id(card_id))
     s = int(suit_from_card_id(card_id))
     return f"{CARD_RANK_LABELS[r]}{_SUIT_GLYPHS[s]}"
-
-
-def _print_state(title: str, snap) -> None:
-    hand = snap.hand
-    faces = [_card_face(c.card_id) for c in hand]
-    line = " ".join(f"{faces[i]:>3}" for i in range(len(faces)))
-    print(f"\n{title}")
-    print(
-        f"  score {snap.current_score}/{snap.target_score}  "
-        f"hands {snap.play_remaining}  discards {snap.discard_remaining}  "
-        f"hand_size {len(hand)}"
-    )
-    print(f"  hand: {line}")
-    print(f"  slots: {'  '.join(str(i) for i in range(len(hand)))}")
 
 
 def _action_from_checkpoint(
@@ -107,7 +94,7 @@ def _action_from_checkpoint(
 def main() -> None:
     p = argparse.ArgumentParser(
         description=(
-            "Single BalatroEnv from a snapshot JSON; each step uses the action from the checkpoint."
+            "GameSimulator from snapshot JSON; each step uses the action from the checkpoint."
         )
     )
     p.add_argument(
@@ -149,7 +136,6 @@ def main() -> None:
         args.device
         or ("cuda" if torch.cuda.is_available() else "cpu")
     )
-    snapshot = load_snapshot(snap_path)
 
     try:
         ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
@@ -170,11 +156,11 @@ def main() -> None:
     agent.load_state_dict(ckpt["model_state_dict"])
     agent.eval()
 
-    env = BalatroEnv(snapshot)
-    obs_raw, info = env.reset(
-        seed=args.seed,
-        options={"snapshot": snapshot},
-    )
+    sim = GameSimulator.from_json(snap_path, seed=args.seed)
+    sim.print_info_snapshot(deck="summary")
+    obs_raw = sim.obs
+    info = sim.info
+
     step = 0
     print(f"checkpoint: {ckpt_path}")
     print(f"snapshot:   {snap_path}")
@@ -182,7 +168,7 @@ def main() -> None:
 
     while step < args.max_steps:
         snap = info["snapshot"]
-        _print_state(f"=== Step {step} (before action) ===", snap)
+        print(f"\n=== Step {step} (before action) ===")
 
         obs_t = dict_to_tensors(
             adapt_lite_vector_obs(_nested_obs_add_batch_dim(obs_raw)),
@@ -205,21 +191,27 @@ def main() -> None:
         action_type = 1 if execution == 0 else 0
         act = {"selection": card_sel, "action_type": int(action_type)}
 
-        obs_raw, reward, terminated, truncated, info = env.step(act)
+        outcome = sim.step_and_print(act, deck="summary")
+        obs_raw, info = sim.obs, sim.info
         step += 1
 
-        print(f"  env reward: {reward:+.4f}  |  terminated={terminated}")
-
-        if reward < 0 and not terminated:
-            print("  (invalid selection or illegal discard; env returned -1 without ending)")
-
-        if terminated or truncated:
-            snap = info["snapshot"]
-            won = info.get("combat_won")
-            _print_state(f"=== Terminal (step {step}) ===", snap)
-            if won is not None:
-                print(f"  combat_won: {won}")
-            break
+        if outcome.stepped:
+            r = float(outcome.reward)
+            term = outcome.terminated
+            print(f"  env reward: {r:+.4f}  |  terminated={term}")
+            if r < 0 and not term:
+                print(
+                    "  (invalid selection or illegal discard; env returned -1 without ending)"
+                )
+            if term:
+                print(
+                    "(hint) Episode over: win."
+                    if outcome.combat_won
+                    else "(hint) Episode over: loss."
+                )
+                break
+        else:
+            print("  env reward: (no step — invalid action)  |  terminated=False")
     else:
         print(f"\nStopped after --max-steps={args.max_steps} without terminal.")
 

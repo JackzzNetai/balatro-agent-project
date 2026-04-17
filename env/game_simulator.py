@@ -33,6 +33,8 @@ class StepOutcome(NamedTuple):
     """``True`` if the episode ended on that step."""
     combat_won: bool | None = None
     """On a terminal step: ``True`` = won, ``False`` = loss; else ``None``."""
+    reward: float | None = None
+    """Env step reward when ``stepped``; else ``None``."""
 
 
 def _hint_if_action_invalid(action: Any, snap: GameSnapshot) -> str | None:
@@ -103,10 +105,10 @@ class GameSimulator:
         if hint is not None:
             print(f"(hint) {hint}")
             return StepOutcome(False)
-        self.obs, _reward, terminated, _truncated, self.info = self.env.step(action)
+        self.obs, reward, terminated, _truncated, self.info = self.env.step(action)
         self.print_info_snapshot(deck=deck)
         cw = self.info.get("combat_won") if terminated else None
-        return StepOutcome(True, bool(terminated), cw)
+        return StepOutcome(True, bool(terminated), cw, float(reward))
 
     @classmethod
     def from_json(
