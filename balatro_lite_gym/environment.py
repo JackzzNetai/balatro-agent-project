@@ -37,6 +37,9 @@ MAX_JOKER_LENGTH = 10
 # Invalid action (snapshot unchanged): reward for that step.
 INVALID_ACTION_REWARD = -0.5
 
+# Win-only terminal reward (see :func:`_terminal_reward`): weight on ``play_remaining``.
+TERMINAL_REWARD_BASE = 0
+
 # Structural potential (see :meth:`BalatroEnv._state_potential`).
 
 # Padding convention: invalid slots are zeros; `*_mask` is 1 for real entries, 0 for pad.
@@ -94,8 +97,10 @@ def _draw_until_hand_size(
 
 
 def _terminal_reward(play_remaining: int, current_score: int) -> float:
-    """Win-only terminal shaping: play_remaining + sqrt(log10(current_score))."""
-    return play_remaining + math.sqrt(math.log10(current_score))
+    """Win-only terminal shaping: coeff * play_remaining + sqrt(log10(current_score))."""
+    return TERMINAL_REWARD_BASE + play_remaining + math.sqrt(
+        math.log10(current_score)
+    )
 
 
 def _score_play_for_potential(
