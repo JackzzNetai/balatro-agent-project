@@ -9,56 +9,82 @@ with these keys (in this order when writing):
 - ``play_remaining``, ``discard_remaining``, ``player_hand_size``
 - ``hand_levels``: object mapping hand-type id (string) to level (integer ``>= 1``)
 
-Also includes optional :func:`generate_snapshot` / :func:`generate_snapshots` for demos.
+:func:`generate_snapshot` builds a full, load-compatible demo snapshot: target score 450,
+4 plays and 3 discards left, no boss blind, no jokers, plain cards only (52-card deck
+shuffled into 8 hand + 44 draw pile), ``player_hand_size`` 8, and per-``HandType``
+levels independently drawn (90% level 1, 10% level 2). :func:`generate_snapshots`
+returns multiple independent draws of that distribution.
 """
 
 from __future__ import annotations
 
 import json
 import random
+import sys
 from pathlib import Path
 from typing import List, Union
 
-from defs import HandType
+# Running `python env/snapshot_io.py` (or "Run Python File") without PYTHONPATH:
+# put the repo's balatro_lite_gym on sys.path so `defs` / `engine` import.
+_gym_root = Path(__file__).resolve().parent.parent / "balatro_lite_gym"
+if _gym_root.is_dir():
+    _gym_root_s = str(_gym_root)
+    if _gym_root_s not in sys.path:
+        sys.path.insert(0, _gym_root_s)
+
+from defs import CardEnhancement, Edition, HandType, NO_BOSS_BLIND_ID
 from engine import Card, GameSnapshot, Joker
 
 # ---------------------------------------------------------------------------
 # Demo snapshot generation (not used by load/save)
 # ---------------------------------------------------------------------------
 
-TARGET_SCORE_MIN = 300
-TARGET_SCORE_MAX = 10000
+TARGET_SCORE = 450
+PLAY_REMAINING = 4
+DISCARD_REMAINING = 3
+PLAYER_HAND_SIZE = 8
+FULL_DECK_SIZE = 52
 
-PLAY_REMAINING_MAX = 5
-DISCARD_REMAINING_MAX = 4
+_PLAIN_ENHANCEMENT = int(CardEnhancement.NONE)
+_PLAIN_EDITION = int(Edition.BASE)
 
-PLAYER_HAND_SIZE_MIN = 5
-PLAYER_HAND_SIZE_MAX = 12
 
-HAND_LEVEL_MAX = 20
+def _plain_card(card_id: int) -> Card:
+    return Card(card_id, _PLAIN_ENHANCEMENT, _PLAIN_EDITION)
 
 
 def generate_snapshot() -> GameSnapshot:
-    """Return a random ``GameSnapshot`` within the configured bounds."""
+    """Return one full ``GameSnapshot`` compatible with :func:`dict_to_snapshot` / JSON I/O.
+
+    Shuffles card ids ``0 .. FULL_DECK_SIZE - 1``, deals ``PLAYER_HAND_SIZE`` into ``hand``,
+    remainder into ``deck``. Fixed combat fields: ``TARGET_SCORE``, ``PLAY_REMAINING``,
+    ``DISCARD_REMAINING``, ``NO_BOSS_BLIND_ID``, empty jokers, plain cards only.
+    Each ``HandType`` level is 1 with probability 0.9 else 2 (independent).
+    """
+    ids = list(range(FULL_DECK_SIZE))
+    random.shuffle(ids)
+    hand = [_plain_card(cid) for cid in ids[:PLAYER_HAND_SIZE]]
+    deck = [_plain_card(cid) for cid in ids[PLAYER_HAND_SIZE:]]
     hand_levels_by_type = {
-        int(hand_type): random.randint(1, HAND_LEVEL_MAX) for hand_type in HandType
+        int(hand_type): random.choices([1, 2], weights=[9, 1], k=1)[0]
+        for hand_type in HandType
     }
     return GameSnapshot(
-        target_score=random.randint(TARGET_SCORE_MIN, TARGET_SCORE_MAX),
+        target_score=TARGET_SCORE,
         current_score=0,
-        blind_id=random.randint(0, 7),
-        hand=[],
-        deck=[],
+        blind_id=NO_BOSS_BLIND_ID,
+        hand=hand,
+        deck=deck,
         jokers=[],
-        play_remaining=random.randint(1, PLAY_REMAINING_MAX),
-        discard_remaining=random.randint(0, DISCARD_REMAINING_MAX),
-        player_hand_size=random.randint(PLAYER_HAND_SIZE_MIN, PLAYER_HAND_SIZE_MAX),
+        play_remaining=PLAY_REMAINING,
+        discard_remaining=DISCARD_REMAINING,
+        player_hand_size=PLAYER_HAND_SIZE,
         hand_levels=hand_levels_by_type,
     )
 
 
 def generate_snapshots(count: int) -> List[GameSnapshot]:
-    """Return ``count`` independently generated snapshots."""
+    """Return ``count`` independent :func:`generate_snapshot` results (one JSON object each when saved)."""
     return [generate_snapshot() for _ in range(count)]
 
 
@@ -234,12 +260,9 @@ def load_snapshot_pool_from_json_dir(
 
 
 if __name__ == "__main__":
-    snapshots = generate_snapshots(3)
-    out_dir = Path("snapshots_out")
+    snapshots = generate_snapshots(5)
+    out_dir = Path("temp/snapshots_out")
     out_dir.mkdir(exist_ok=True)
     for i, s in enumerate(snapshots):
         save_snapshot(out_dir / f"{i}.json", s)
     print(f"Saved {len(snapshots)} snapshots under {out_dir}/")
-
-    loaded0 = load_snapshot(out_dir / "0.json")
-    print(f"Loaded snapshot 0: target_score={loaded0.target_score}")
