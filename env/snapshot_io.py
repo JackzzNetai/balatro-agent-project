@@ -50,12 +50,12 @@ class SnapshotGenerateOption(Enum):
 # Demo snapshot generation (not used by load/save)
 # ---------------------------------------------------------------------------
 
-TARGET_SCORE = 300
+TARGET_SCORE = 500
 PLAY_REMAINING = 4
 DISCARD_REMAINING = 4
 PLAYER_HAND_SIZE = 8
 FULL_DECK_SIZE = 52
-DEMO_SNAPSHOT_COUNT = 20
+DEMO_SNAPSHOT_COUNT = 25
 
 _PLAIN_ENHANCEMENT = int(CardEnhancement.NONE)
 _PLAIN_EDITION = int(Edition.BASE)
