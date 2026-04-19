@@ -110,7 +110,7 @@ class MinimalCombatBackbone(nn.Module):
         nhead: int = 8,
         dim_ff: int = 1024,
         dropout: float = 0.1,
-        depth_hand: int = 3,
+        depth_hand: int = 2,
         depth_hc: int = 1,
     ):
         super().__init__()
@@ -152,9 +152,6 @@ class MinimalCombatPPOAgent(nn.Module):
         nhead: int = 8,
         dim_ff: int = 1024,
         dropout: float = 0.1,
-        *,
-        depth_hand: int = 3,
-        depth_hc: int = 2,
     ):
         super().__init__()
         self.embeddings = MinimalCombatEmbeddings(d_model=d_model)
@@ -163,8 +160,6 @@ class MinimalCombatPPOAgent(nn.Module):
             nhead=nhead,
             dim_ff=dim_ff,
             dropout=dropout,
-            depth_hand=depth_hand,
-            depth_hc=depth_hc,
         )
         self.heads = CombatHeads(d_model=d_model)
 
