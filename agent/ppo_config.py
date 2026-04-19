@@ -30,8 +30,8 @@ class PPOConfig:
     max_iterations: int = 1500
 
     c_value: float = 0.5
-    c_entropy: float = 0.05
-    use_entropy_scheduler: bool = True  # If False, training leaves ``c_entropy`` at its configured value (no linear decay).
+    c_entropy: float = 0.014
+    use_entropy_scheduler: bool = False  # If False, training leaves ``c_entropy`` at its configured value (no linear decay).
 
     max_grad_norm: float = 0.5
 
