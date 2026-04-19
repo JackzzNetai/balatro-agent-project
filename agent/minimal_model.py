@@ -1,9 +1,10 @@
-"""Minimal combat PPO policy: hand cards (rank+suit only), hand levels, and run scalars.
+"""Minimal combat PPO policy: hand + deck cards (rank+suit, shared embedding), hand levels, run scalars.
 
 Uses the same flat observation dict as :func:`env.lite_combat_env.adapt_lite_vector_obs` but
-ignores deck, jokers, boss, and card modifiers. Run state includes hands/discards/hand size plus
-scaled score features (progress ``(current/target)*10`` and ``log10(target)``), not raw chip
-totals. Forward API matches :class:`CombatPPOAgent`.
+ignores jokers, boss, and card modifiers. Deck tokens add a learned segment offset before
+layer norm; the backbone does hand self-attention, then cross-attention to deck, then to
+hand levels + run token. Run state includes hands/discards/hand size plus scaled score features
+(progress ``(current/target)*10`` and ``log10(target)``). Forward API matches :class:`CombatPPOAgent`.
 """
 
 from __future__ import annotations
@@ -85,20 +86,32 @@ class MinimalRunStateEmbedding(nn.Module):
 
 
 class MinimalCombatEmbeddings(nn.Module):
+    """Shared rank/suit embedding for hand and deck; deck gets ``deck_segment_vector`` + ``deck_ln``."""
+
     def __init__(self, d_model: int):
         super().__init__()
-        self.hand_card_emb = SimpleCardEmbedding(d_model)
+        self.card_emb = SimpleCardEmbedding(d_model)
+        self.deck_segment_vector = nn.Parameter(torch.zeros(d_model))
         self.run_emb = MinimalRunStateEmbedding(d_model)
         self.hl_emb = HandLevelEmbedding(d_model)
         self.hand_ln = nn.LayerNorm(d_model)
+        self.deck_ln = nn.LayerNorm(d_model)
 
     def forward(self, obs: dict):
         hand_mask = obs["hand_card_mask"].bool()
-        hand_toks, _ = self.hand_card_emb(
+        hand_toks, _ = self.card_emb(
             obs["hand_card_ids"].long(),
             hand_mask,
         )
         hand_toks = self.hand_ln(hand_toks)
+
+        deck_mask = obs["deck_card_mask"].bool()
+        deck_toks, _ = self.card_emb(
+            obs["deck_card_ids"].long(),
+            deck_mask,
+        )
+        deck_toks = deck_toks + self.deck_segment_vector
+        deck_toks = self.deck_ln(deck_toks)
 
         run_tok = self.run_emb(obs)
         hl_toks = self.hl_emb(obs["hand_levels"])
@@ -111,7 +124,7 @@ class MinimalCombatEmbeddings(nn.Module):
             dtype=torch.bool,
             device=hand_toks.device,
         )
-        return hand_toks, hand_mask, ctx_seq, ctx_mask
+        return hand_toks, hand_mask, deck_toks, deck_mask, ctx_seq, ctx_mask
 
 
 class MinimalCombatBackbone(nn.Module):
@@ -122,6 +135,7 @@ class MinimalCombatBackbone(nn.Module):
         dim_ff: int = 1024,
         dropout: float = 0.1,
         depth_hand: int = 2,
+        depth_hd: int = 1,
         depth_hc: int = 1,
     ):
         super().__init__()
@@ -130,6 +144,7 @@ class MinimalCombatBackbone(nn.Module):
             return PreNormBlock(d_model, nhead, dim_ff, dropout)
 
         self.hand_self_layers = nn.ModuleList([blk() for _ in range(depth_hand)])
+        self.hand_deck_layers = nn.ModuleList([blk() for _ in range(depth_hd)])
         self.hand_ctx_layers = nn.ModuleList([blk() for _ in range(depth_hc)])
         self.final_norm = nn.LayerNorm(d_model)
 
@@ -137,12 +152,17 @@ class MinimalCombatBackbone(nn.Module):
         self,
         hand_toks: torch.Tensor,
         hand_mask: torch.Tensor,
+        deck_toks: torch.Tensor,
+        deck_mask: torch.Tensor,
         ctx_seq: torch.Tensor,
         ctx_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         hand = hand_toks
         for layer in self.hand_self_layers:
             hand = layer(hand, kv_mask=hand_mask)
+
+        for layer in self.hand_deck_layers:
+            hand = layer(hand, kv=deck_toks, kv_mask=deck_mask)
 
         for layer in self.hand_ctx_layers:
             hand = layer(hand, kv=ctx_seq, kv_mask=ctx_mask)
@@ -175,10 +195,14 @@ class MinimalCombatPPOAgent(nn.Module):
         self.heads = CombatHeads(d_model=d_model)
 
     def forward(self, obs: dict) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        hand_toks, hand_mask, ctx_seq, ctx_mask = self.embeddings(obs)
+        hand_toks, hand_mask, deck_toks, deck_mask, ctx_seq, ctx_mask = self.embeddings(
+            obs
+        )
         hand_final, global_ctx = self.backbone(
             hand_toks,
             hand_mask,
+            deck_toks,
+            deck_mask,
             ctx_seq,
             ctx_mask,
         )
