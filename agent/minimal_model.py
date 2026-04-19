@@ -1,7 +1,9 @@
-"""Minimal combat PPO policy: hand cards (rank+suit only), play/discard remaining, hand levels.
+"""Minimal combat PPO policy: hand cards (rank+suit only), hand levels, and run scalars.
 
 Uses the same flat observation dict as :func:`env.lite_combat_env.adapt_lite_vector_obs` but
-ignores deck, jokers, boss, scores, and card modifiers. Forward API matches :class:`CombatPPOAgent`.
+ignores deck, jokers, boss, and card modifiers. Run state includes hands/discards/hand size plus
+scaled score features (progress ``(current/target)*10`` and ``log10(target)``), not raw chip
+totals. Forward API matches :class:`CombatPPOAgent`.
 """
 
 from __future__ import annotations
@@ -53,9 +55,13 @@ class SimpleCardEmbedding(nn.Module):
 
 
 class MinimalRunStateEmbedding(nn.Module):
-    """``hands_remaining`` and ``discards_remaining`` → one ``(B, 1, d_model)`` token."""
+    """Run scalars → one ``(B, 1, d_model)`` token.
 
-    NUM_SCALARS = 2
+    Features (in order): ``hands_remaining``, ``discards_remaining``, ``player_hand_size``,
+    ``(current_score / target_score) * 10``, ``log10(target_score)``.
+    """
+
+    NUM_SCALARS = 5
 
     def __init__(self, d_model: int):
         super().__init__()
@@ -63,10 +69,15 @@ class MinimalRunStateEmbedding(nn.Module):
         self.ln = nn.LayerNorm(d_model)
 
     def forward(self, obs: dict) -> torch.Tensor:
+        cur = obs["current_score"].float().squeeze(-1)
+        tgt = obs["target_score"].float().squeeze(-1)
         feats = torch.stack(
             [
                 obs["hands_remaining"].float().squeeze(-1),
                 obs["discards_remaining"].float().squeeze(-1),
+                obs["player_hand_size"].float().squeeze(-1),
+                (cur / tgt) * 10.0,
+                torch.log10(tgt),
             ],
             dim=-1,
         )
