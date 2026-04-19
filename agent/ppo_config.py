@@ -22,7 +22,7 @@ class PPOConfig:
     value_clip_eps: float | None = None  # Use clip_eps if None
     ppo_epochs: int = 4
     num_minibatches: int = 4
-    max_iterations: int = 1000
+    max_iterations: int = 1500
     c_value: float = 0.5
     c_entropy: float = 0.05
     max_grad_norm: float = 0.5
