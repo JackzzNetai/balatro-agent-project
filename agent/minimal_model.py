@@ -86,7 +86,7 @@ class MinimalRunStateEmbedding(nn.Module):
 
 
 class MinimalCombatEmbeddings(nn.Module):
-    """Shared rank/suit embedding for hand and deck; deck gets ``deck_segment_vector`` + ``deck_ln``."""
+    """Shared rank/suit embedding for hand and deck; deck adds ``deck_segment_vector`` on real slots only, then ``deck_ln``, then mask again."""
 
     def __init__(self, d_model: int):
         super().__init__()
@@ -110,8 +110,10 @@ class MinimalCombatEmbeddings(nn.Module):
             obs["deck_card_ids"].long(),
             deck_mask,
         )
-        deck_toks = deck_toks + self.deck_segment_vector
+        dm = deck_mask.unsqueeze(-1).float()
+        deck_toks = (deck_toks + self.deck_segment_vector) * dm
         deck_toks = self.deck_ln(deck_toks)
+        deck_toks = deck_toks * dm
 
         run_tok = self.run_emb(obs)
         hl_toks = self.hl_emb(obs["hand_levels"])
