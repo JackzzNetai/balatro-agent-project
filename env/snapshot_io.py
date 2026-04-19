@@ -44,6 +44,7 @@ PLAY_REMAINING = 4
 DISCARD_REMAINING = 3
 PLAYER_HAND_SIZE = 8
 FULL_DECK_SIZE = 52
+DEMO_SNAPSHOT_COUNT = 100
 
 _PLAIN_ENHANCEMENT = int(CardEnhancement.NONE)
 _PLAIN_EDITION = int(Edition.BASE)
@@ -260,7 +261,7 @@ def load_snapshot_pool_from_json_dir(
 
 
 if __name__ == "__main__":
-    snapshots = generate_snapshots(5)
+    snapshots = generate_snapshots(DEMO_SNAPSHOT_COUNT)
     out_dir = Path("temp/snapshots_out")
     out_dir.mkdir(exist_ok=True)
     for i, s in enumerate(snapshots):

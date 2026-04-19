@@ -27,7 +27,7 @@ class PPOConfig:
 
     ppo_epochs: int = 4
     num_minibatches: int = 4
-    max_iterations: int = 1500
+    max_iterations: int = 20000
 
     c_value: float = 0.5
     c_entropy: float = 0.05
