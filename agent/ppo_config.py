@@ -18,7 +18,7 @@ class PPOConfig:
     lr: float = 6e-5
     use_lr_scheduler: bool = False
     lr_min_ratio: float = 0.1
-    
+
     gae_lambda: float = 0.95
 
     clip_eps: float = 0.2
@@ -31,10 +31,10 @@ class PPOConfig:
 
     c_value: float = 0.5
     c_entropy: float = 0.05
-    
-    use_entropy_scheduler: bool = True # If False, training leaves ``c_entropy`` at its configured value (no linear decay).
+    use_entropy_scheduler: bool = True  # If False, training leaves ``c_entropy`` at its configured value (no linear decay).
+
     max_grad_norm: float = 0.5
-    
+
     d_model: int = 256
     nhead: int = 8
     dim_ff: int = 1024
