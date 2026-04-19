@@ -24,7 +24,7 @@ class PPOConfig:
     num_minibatches: int = 4
     max_iterations: int = 1000
     c_value: float = 0.5
-    c_entropy: float = 0.1
+    c_entropy: float = 0.05
     max_grad_norm: float = 0.5
     use_lr_scheduler: bool = False
     lr_min_ratio: float = 0.1
