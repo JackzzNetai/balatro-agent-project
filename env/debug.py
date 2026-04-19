@@ -169,11 +169,11 @@ def _format_joker_slot(idx: int, j: Joker) -> str:
         name = JOKER_LABELS[JokerId(j.id)]
     except ValueError:
         name = f"(unknown id {j.id})"
-    parts = f"  slot {idx}: id={j.id}  ({name})"
+    line = f"  j{idx}: {name} (id={j.id})"
     ed = Edition(j.edition)
     if ed is not Edition.BASE:
-        parts += f"  ed={EDITION_LABELS[ed]}"
-    return parts
+        line += f" · {EDITION_LABELS[ed]}"
+    return line
 
 
 def format_snapshot(
@@ -187,19 +187,13 @@ def format_snapshot(
     cur, tgt = snapshot.current_score, snapshot.target_score
     need = max(0, int(tgt) - int(cur))
     lines.append("")
-    lines.append("=== Blind / score ===")
+    lines.append("=== State ===")
     lines.append(f"  round chips: {cur} / target {tgt}  (need {need} more)")
-
-    lines.append("")
-    lines.append("=== Resources ===")
     lines.append(
         f"  hand_size={snapshot.player_hand_size}  hands_left={snapshot.play_remaining}  "
-        f"discards_left={snapshot.discard_remaining}"
+        f"discards_left={snapshot.discard_remaining}  blind_id={snapshot.blind_id}  "
+        f"({_blind_label(snapshot.blind_id)})"
     )
-
-    lines.append("")
-    lines.append("=== Boss ===")
-    lines.append(f"  blind_id={snapshot.blind_id}  ({_blind_label(snapshot.blind_id)})")
 
     lines.append("")
     lines.append("=== Hand ===")
@@ -235,16 +229,16 @@ def format_snapshot(
             lines.append(f"  [{i}] {face}{glyph}  id={c.card_id}{suf}")
 
     lines.append("")
-    lines.append("=== Hand levels (id, lvl, chips, mult) ===")
+    lines.append("=== Hand levels ===")
     for hi in range(HAND_TYPE_COUNT):
         name = HAND_TYPE_LABELS[HandType(hi)]
         lev = snapshot.hand_levels.get(hi)
         if lev is None:
-            lines.append(f"  {name:22s}  id={hi}  lvl=  —  chips=    —  mult=  —")
+            lines.append(f"  {name:16s}  #{hi}  lvl=—  chips=—  mult=—")
         else:
             ch, mu = chips_mult_for_hand_level(HandType(hi), lev)
             lines.append(
-                f"  {name:22s}  id={hi}  lvl={lev:3d}  chips={ch:5d}  mult={mu:3d}"
+                f"  {name:16s}  #{hi}  lvl={lev:3d}  chips={ch:5d}  mult={mu:3d}"
             )
 
     lines.append("")
