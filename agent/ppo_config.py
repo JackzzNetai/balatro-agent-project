@@ -14,7 +14,7 @@ class PPOConfig:
     num_envs: int = 64
     rollout_steps: int = 16
     # PPO
-    lr: float = 1e-4
+    lr: float = 6e-5
     gae_lambda: float = 0.95
     clip_eps: float = 0.2
     # If True, value loss uses max of squared error vs clipped V (see PPO paper); eps from value_clip_eps or clip_eps.
@@ -24,11 +24,11 @@ class PPOConfig:
     num_minibatches: int = 4
     max_iterations: int = 1000
     c_value: float = 0.5
-    c_entropy: float = 0.05
+    c_entropy: float = 0.1
     max_grad_norm: float = 0.5
-    use_lr_scheduler: bool = True
+    use_lr_scheduler: bool = False
     lr_min_ratio: float = 0.1
     d_model: int = 256
     nhead: int = 8
     dim_ff: int = 1024
-    dropout: float = 0.1
+    dropout: float = 0.0
