@@ -37,8 +37,8 @@ MAX_JOKER_LENGTH = 10
 # Invalid action (snapshot unchanged): reward for that step.
 INVALID_ACTION_REWARD = -0.5
 
-# Win-only terminal reward (see :func:`_terminal_reward`): weight on ``play_remaining``.
-TERMINAL_REWARD_BASE = 0
+# Win-only terminal reward (see :func:`_terminal_reward`): added to ``sqrt(log10(current_score))``.
+TERMINAL_REWARD_BASE = 10
 
 # Structural potential (see :meth:`BalatroEnv._state_potential`).
 
@@ -96,11 +96,12 @@ def _draw_until_hand_size(
         hand.append(deck.pop(j))
 
 
-def _terminal_reward(play_remaining: int, current_score: int) -> float:
-    """Win-only terminal shaping: coeff * play_remaining + sqrt(log10(current_score))."""
-    return TERMINAL_REWARD_BASE + play_remaining + math.sqrt(
-        math.log10(current_score)
-    )
+def _terminal_reward(current_score: int) -> float:
+    """Win-only base reward: ``TERMINAL_REWARD_BASE + sqrt(log10(current_score))``.
+
+    Caller contract: ``current_score`` is positive (win path).
+    """
+    return TERMINAL_REWARD_BASE + math.sqrt(math.log10(current_score))
 
 
 def _score_play_for_potential(
@@ -360,9 +361,10 @@ class BalatroEnv(Env):
     blind was beaten, ``False`` on terminal loss). Non-terminal steps and ``reset``
     return only ``snapshot``.
 
-    **``shaping_gamma``:** PBRS coefficient in ``r + γ Φ(s') - Φ(s)``; set equal to
-    the learner discount (e.g. ``make_vec(..., shaping_gamma=cfg.gamma)``) for the usual
-    policy-invariant shaping.
+    **``shaping_gamma``:** PBRS coefficient in ``r + γ Φ(s') - Φ(s)`` with
+    ``Φ(s') = 0`` on terminal ``s'`` (absorbing); set equal to the learner discount
+    (e.g. ``make_vec(..., shaping_gamma=cfg.gamma)``) for the usual policy-invariant
+    shaping.
     """
 
     metadata = {"render_modes": []}
@@ -411,11 +413,11 @@ class BalatroEnv(Env):
     def _state_potential(self, snapshot: GameSnapshot) -> float:
         """Potential Φ(s) for potential-based reward shaping (Ng et al.).
 
-        On **valid** non-terminal transitions :meth:`step` adds
-        ``shaping_gamma * Φ(s') - Φ(s)`` to the step reward. **Terminal** states use
-        ``Φ(s') = 0`` (absorbing). **Invalid** actions (see :meth:`_invalid_action_step`)
-        add the same PBRS form with ``Φ(s') = Φ(s)`` using cached :attr:`_prev_potential`,
-        plus ``INVALID_ACTION_REWARD``.
+        :meth:`step` adds ``shaping_gamma * Φ(s') - Φ(s)`` where ``Φ(s') = 0`` if the
+        transition is terminal (win or loss), else ``Φ(s')`` is this potential on the
+        post-step snapshot. **Invalid** actions (see :meth:`_invalid_action_step`) use
+        unchanged state, so ``Φ(s') = Φ(s)`` via cached :attr:`_prev_potential`, plus
+        ``INVALID_ACTION_REWARD``.
 
         Builds three multisets (up to five cards each) from ``snapshot.hand`` via
         :func:`util.pick_five_min_rank_diversity`,
@@ -430,7 +432,7 @@ class BalatroEnv(Env):
         2. **Suit focus:** fewest distinct suits (greedy by suit frequency).
         3. **Straight:** strongest wiki straight if present; else term omitted.
 
-        Φ is ``sqrt(log10(raw))`` where ``raw`` is the maximum hypothetical play score
+        Φ is ``5 * log10(raw)`` where ``raw`` is the maximum hypothetical play score
         plus ``snapshot.current_score`` (straight omitted when absent). Requires
         ``raw > 0`` (``log10`` domain).
         """
@@ -498,19 +500,14 @@ class BalatroEnv(Env):
         reached_target = snap.current_score >= snap.target_score
         terminated = reached_target or snap.play_remaining == 0
         if terminated:
-            reward = (
-                _terminal_reward(snap.play_remaining, snap.current_score)
-                if reached_target
-                else 0.0
-            )
+            reward = _terminal_reward(snap.current_score) if reached_target else 0.0
         else:
             _draw_until_hand_size(
                 hand, snap.deck, snap.player_hand_size, self.np_random
             )
             reward = 0.0
 
-        # phi_prime = 0.0 if terminated else self._state_potential(snap)
-        phi_prime = self._state_potential(snap)
+        phi_prime = 0.0 if terminated else self._state_potential(snap)
         reward += self.shaping_gamma * phi_prime - self._prev_potential
         self._prev_potential = phi_prime
 
