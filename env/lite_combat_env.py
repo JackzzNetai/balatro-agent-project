@@ -270,8 +270,6 @@ class LitePooledCombatEnv(gym.Env):
         self,
         snapshot_pool: Sequence[GameSnapshot],
         pool_seed: int = 0,
-        *,
-        shaping_gamma: float = 1.0,
     ) -> None:
         super().__init__()
         if not snapshot_pool:
@@ -282,9 +280,7 @@ class LitePooledCombatEnv(gym.Env):
         self.observation_space = build_training_observation_space()
         self.action_space = spaces.MultiBinary(MAX_HAND_LENGTH + 1)
 
-        self._env = BalatroEnv(
-            deepcopy(self._pool[0]), shaping_gamma=float(shaping_gamma)
-        )
+        self._env = BalatroEnv(deepcopy(self._pool[0]))
 
     def reset(
         self,
@@ -341,39 +337,27 @@ class LitePooledCombatEnv(gym.Env):
 def make_lite_pooled_combat_env(
     snapshot_pool: Sequence[GameSnapshot],
     pool_seed: int = 0,
-    *,
-    shaping_gamma: float = 1.0,
 ) -> LitePooledCombatEnv:
     """Factory for ``gymnasium.vector.VectorEnv``."""
-    return LitePooledCombatEnv(
-        snapshot_pool, pool_seed=pool_seed, shaping_gamma=shaping_gamma
-    )
+    return LitePooledCombatEnv(snapshot_pool, pool_seed=pool_seed)
 
 
 def make_vec_sync(
     snapshot_pool: Sequence[GameSnapshot],
     n: int,
     base_seed: int = 0,
-    *,
-    shaping_gamma: float = 1.0,
 ):
     """Build a ``SyncVectorEnv`` with ``n`` workers (single process, sequential stepping)."""
-    return _make_vec_fns(
-        snapshot_pool, n, base_seed, sync=True, shaping_gamma=shaping_gamma
-    )
+    return _make_vec_fns(snapshot_pool, n, base_seed, sync=True)
 
 
 def make_vec_async(
     snapshot_pool: Sequence[GameSnapshot],
     n: int,
     base_seed: int = 0,
-    *,
-    shaping_gamma: float = 1.0,
 ):
     """Build an ``AsyncVectorEnv`` with ``n`` subprocess workers (parallel stepping)."""
-    return _make_vec_fns(
-        snapshot_pool, n, base_seed, sync=False, shaping_gamma=shaping_gamma
-    )
+    return _make_vec_fns(snapshot_pool, n, base_seed, sync=False)
 
 
 def _make_vec_fns(
@@ -382,14 +366,12 @@ def _make_vec_fns(
     base_seed: int,
     *,
     sync: bool,
-    shaping_gamma: float = 1.0,
 ) -> gym.vector.VectorEnv:
     fns = [
         partial(
             make_lite_pooled_combat_env,
             snapshot_pool,
             pool_seed=base_seed + i,
-            shaping_gamma=shaping_gamma,
         )
         for i in range(n)
     ]
@@ -404,7 +386,6 @@ def make_vec(
     base_seed: int = 0,
     *,
     backend: str = "async",
-    shaping_gamma: float = 1.0,
 ) -> gym.vector.VectorEnv:
     """Build a vector env over ``snapshot_pool`` (one ``LitePooledCombatEnv`` per worker).
 
@@ -415,8 +396,6 @@ def make_vec(
         base_seed: Worker ``i`` uses ``pool_seed=base_seed+i`` for pool draw / ordering.
         backend: ``\"async\"`` (default) for ``AsyncVectorEnv``, or ``\"sync\"`` for
             ``SyncVectorEnv`` (debug / no multiprocessing).
-        shaping_gamma: PBRS discount in underlying :class:`~environment.BalatroEnv`; match
-            PPO ``gamma`` for standard potential-based shaping (Ng et al.).
 
     Returns:
         A ``gymnasium.vector.VectorEnv`` instance.
@@ -429,7 +408,6 @@ def make_vec(
         n,
         base_seed,
         sync=(b == "sync"),
-        shaping_gamma=shaping_gamma,
     )
 
 
@@ -445,7 +423,7 @@ def dict_to_tensors(obs_np: dict, dev):  # dev: torch.device
 
 
 class VecRolloutBuffer:
-    """One parallel rollout chunk (``T`` × ``N``): obs, actions, log-probs, values, rewards."""
+    """One parallel rollout chunk (``T`` × ``N``): obs, actions, log-probs, values, rewards, step gammas."""
 
     def __init__(self, T: int, N: int, dev):
         import torch
@@ -457,6 +435,7 @@ class VecRolloutBuffer:
         self.values = torch.zeros(T, N, device=dev)
         self.rewards = torch.zeros(T, N, device=dev)
         self.dones = torch.zeros(T, N, device=dev)
+        self.step_gammas = torch.zeros(T, N, device=dev)
         self.obs: dict = {}
 
     def store_step(
@@ -469,6 +448,7 @@ class VecRolloutBuffer:
         values,
         rewards: np.ndarray,
         dones: np.ndarray,
+        step_gammas: np.ndarray,
     ) -> None:
         import torch
 
@@ -489,6 +469,9 @@ class VecRolloutBuffer:
         self.values[t] = values.detach()
         self.rewards[t] = torch.as_tensor(rewards, device=self.dev)
         self.dones[t] = torch.as_tensor(dones.astype(np.float32), device=self.dev)
+        self.step_gammas[t] = torch.as_tensor(
+            step_gammas, device=self.dev, dtype=self.step_gammas.dtype
+        )
 
     def flatten(self):
         TN = self.T * self.N
@@ -508,21 +491,24 @@ def compute_gae_vectorized(
     values,
     next_values,
     dones,
-    gamma: float,
+    gammas,
     gae_lambda: float,
 ):
     import torch
 
     with torch.no_grad():
         T, N = rewards.shape
+        if gammas.shape != (T, N):
+            raise ValueError(f"gammas shape {gammas.shape} != rewards {(T, N)}")
         advantages = torch.zeros_like(rewards)
         last_gae = torch.zeros(N, device=rewards.device)
 
         for t in reversed(range(T)):
+            g = gammas[t]
             next_val = next_values if t == T - 1 else values[t + 1]
             not_done = 1.0 - dones[t]
-            delta = rewards[t] + gamma * next_val * not_done - values[t]
-            last_gae = delta + gamma * gae_lambda * not_done * last_gae
+            delta = rewards[t] + g * next_val * not_done - values[t]
+            last_gae = delta + g * gae_lambda * not_done * last_gae
             advantages[t] = last_gae
 
         returns = advantages + values

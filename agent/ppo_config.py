@@ -15,8 +15,7 @@ class PPOConfig:
     rollout_steps: int = 16
     # PPO
     lr: float = 1e-4
-    gamma: float = 1.0
-    gae_lambda: float = 0.97
+    gae_lambda: float = 0.95
     clip_eps: float = 0.2
     # If True, value loss uses max of squared error vs clipped V (see PPO paper); eps from value_clip_eps or clip_eps.
     clip_value_function: bool = True

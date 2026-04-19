@@ -35,7 +35,7 @@ MAX_DECK_LENGTH = 100
 MAX_JOKER_LENGTH = 10
 
 # Invalid action (snapshot unchanged): reward for that step.
-INVALID_ACTION_REWARD = -0.5
+INVALID_ACTION_REWARD = -1.0
 
 # Win-only terminal reward (see :func:`_terminal_reward`): added to ``sqrt(log10(current_score))``.
 TERMINAL_REWARD_BASE = 10
@@ -357,19 +357,26 @@ class BalatroEnv(Env):
 
     **``info``:** ``reset`` and ``step`` return ``info["snapshot"]`` — the live
     :class:`~engine.GameSnapshot` (same object as ``_snapshot`` after the transition).
-    On **terminal** steps only, ``info`` also contains ``combat_won`` (``True`` if the
-    blind was beaten, ``False`` on terminal loss). Non-terminal steps and ``reset``
-    return only ``snapshot``.
+    Each ``step`` also includes ``info["pbrs_gamma"]``, the PBRS coefficient used for
+    that transition (for GAE / advantage code). On **terminal** steps only, ``info``
+    also contains ``combat_won`` (``True`` if the blind was beaten, ``False`` on
+    terminal loss). ``reset`` returns only ``snapshot``.
 
-    **``shaping_gamma``:** PBRS coefficient in ``r + γ Φ(s') - Φ(s)`` with
-    ``Φ(s') = 0`` on terminal ``s'`` (absorbing); set equal to the learner discount
-    (e.g. ``make_vec(..., shaping_gamma=cfg.gamma)``) for the usual policy-invariant
-    shaping.
+    **PBRS γ:** per-transition coefficient in ``r + γ Φ(s') - Φ(s)`` with ``Φ(s') = 0``
+    on terminal ``s'``. Uses ``gamma_play`` on valid plays, ``gamma_discard`` on valid
+    discards, and ``gamma_invalid`` (set equal to ``gamma_discard`` on each :meth:`reset`)
+    on invalid actions.
     """
 
     metadata = {"render_modes": []}
 
-    def __init__(self, snapshot: GameSnapshot, *, shaping_gamma: float = 1.0) -> None:
+    def __init__(
+        self,
+        snapshot: GameSnapshot,
+        *,
+        gamma_discard: float = 0.999,
+        gamma_play: float = 0.5,
+    ) -> None:
         super().__init__()
         self.observation_space = build_observation_space()
         self.action_space = spaces.Dict(
@@ -378,16 +385,28 @@ class BalatroEnv(Env):
                 "action_type": spaces.Discrete(2),
             }
         )
-        self.shaping_gamma = float(shaping_gamma)
+        self._default_gamma_discard = float(gamma_discard)
+        self._default_gamma_play = float(gamma_play)
         self._init_snapshot_template: GameSnapshot = copy.deepcopy(snapshot)
         self._snapshot: GameSnapshot | None = None
         self._prev_potential: float = 0.0
+        self.gamma_discard: float = self._default_gamma_discard
+        self.gamma_play: float = self._default_gamma_play
+        self.gamma_invalid: float = self._default_gamma_discard
 
-    def _info(self, *, terminal: bool = False, combat_won: bool = False) -> dict:
+    def _info(
+        self,
+        *,
+        terminal: bool = False,
+        combat_won: bool = False,
+        pbrs_gamma: float | None = None,
+    ) -> dict:
         assert self._snapshot is not None
         out: dict = {"snapshot": self._snapshot}
         if terminal:
             out["combat_won"] = bool(combat_won)
+        if pbrs_gamma is not None:
+            out["pbrs_gamma"] = float(pbrs_gamma)
         return out
 
     def _get_obs(self) -> dict:
@@ -400,11 +419,13 @@ class BalatroEnv(Env):
 
         The snapshot is unchanged, so ``Φ(s') = Φ(s)``; reuse :attr:`_prev_potential`
         (no :meth:`_state_potential` call). Shaping adds
-        ``shaping_gamma * Φ(s) - Φ(s)`` — zero when ``shaping_gamma == 1``.
+        ``γ_invalid * Φ(s) - Φ(s)`` — zero when ``γ_invalid == 1``.
         """
         reward = float(INVALID_ACTION_REWARD)
-        reward += self.shaping_gamma * self._prev_potential - self._prev_potential
-        return self._get_obs(), reward, False, False, self._info()
+        reward += self.gamma_invalid * self._prev_potential - self._prev_potential
+        return self._get_obs(), reward, False, False, self._info(
+            pbrs_gamma=self.gamma_invalid
+        )
 
     def _calculate_score(self, selected_cards: list[Card]) -> int:
         assert self._snapshot is not None
@@ -413,7 +434,7 @@ class BalatroEnv(Env):
     def _state_potential(self, snapshot: GameSnapshot) -> float:
         """Potential Φ(s) for potential-based reward shaping (Ng et al.).
 
-        :meth:`step` adds ``shaping_gamma * Φ(s') - Φ(s)`` where ``Φ(s') = 0`` if the
+        :meth:`step` adds ``γ * Φ(s') - Φ(s)`` (γ depends on the action) where ``Φ(s') = 0`` if the
         transition is terminal (win or loss), else ``Φ(s')`` is this potential on the
         post-step snapshot. **Invalid** actions (see :meth:`_invalid_action_step`) use
         unchanged state, so ``Φ(s') = Φ(s)`` via cached :attr:`_prev_potential`, plus
@@ -448,8 +469,7 @@ class BalatroEnv(Env):
         ]
         if idx_streak is not None:
             scores.append(_score_play_for_potential(idx_streak, snapshot, self.np_random))
-        raw = max(scores) + snapshot.current_score
-        return math.log10(raw) * 5
+        return math.log10(max(scores) + snapshot.current_score)
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
         opts = options or {}
@@ -461,6 +481,9 @@ class BalatroEnv(Env):
             self._snapshot = src
         else:
             self._snapshot = copy.deepcopy(self._init_snapshot_template)
+        self.gamma_discard = float(opts.get("gamma_discard", self._default_gamma_discard))
+        self.gamma_play = float(opts.get("gamma_play", self._default_gamma_play))
+        self.gamma_invalid = self.gamma_discard
         self._prev_potential = self._state_potential(self._snapshot)
         return self._get_obs(), self._info()
 
@@ -508,9 +531,12 @@ class BalatroEnv(Env):
             reward = 0.0
 
         phi_prime = 0.0 if terminated else self._state_potential(snap)
-        reward += self.shaping_gamma * phi_prime - self._prev_potential
+        step_gamma = self.gamma_play if action_type == 1 else self.gamma_discard
+        reward += step_gamma * phi_prime - self._prev_potential
         self._prev_potential = phi_prime
 
         return self._get_obs(), reward, terminated, False, self._info(
-            terminal=terminated, combat_won=reached_target
+            terminal=terminated,
+            combat_won=reached_target,
+            pbrs_gamma=step_gamma,
         )
