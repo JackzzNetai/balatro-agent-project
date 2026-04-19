@@ -9,11 +9,13 @@ with these keys (in this order when writing):
 - ``play_remaining``, ``discard_remaining``, ``player_hand_size``
 - ``hand_levels``: object mapping hand-type id (string) to level (integer ``>= 1``)
 
-:func:`generate_snapshot` builds a full, load-compatible demo snapshot: target score 450,
-4 plays and 3 discards left, no boss blind, no jokers, plain cards only (52-card deck
-shuffled into 8 hand + 44 draw pile), ``player_hand_size`` 8, and per-``HandType``
-levels independently drawn (90% level 1, 10% level 2). :func:`generate_snapshots`
-returns multiple independent draws of that distribution.
+:func:`generate_snapshot` builds a full, load-compatible demo snapshot (see module
+constants for target score, plays/discards, hand size). Optional
+:class:`SnapshotGenerateOption` forces the 8-card hand to contain five cards that form
+a flush (:attr:`SnapshotGenerateOption.FLUSH_IN_HAND`) or a straight
+(:attr:`SnapshotGenerateOption.STRAIGHT_IN_HAND`); the rest of the deal is unchanged
+(full 52-card partition, plain cards, same ``hand_levels`` distribution).
+:func:`generate_snapshots` repeats generation with the same ``option``.
 """
 
 from __future__ import annotations
@@ -21,8 +23,9 @@ from __future__ import annotations
 import json
 import random
 import sys
+from enum import Enum, auto
 from pathlib import Path
-from typing import List, Union
+from typing import List, Tuple, Union
 
 # Running `python env/snapshot_io.py` (or "Run Python File") without PYTHONPATH:
 # put the repo's balatro_lite_gym on sys.path so `defs` / `engine` import.
@@ -32,19 +35,27 @@ if _gym_root.is_dir():
     if _gym_root_s not in sys.path:
         sys.path.insert(0, _gym_root_s)
 
-from defs import CardEnhancement, Edition, HandType, NO_BOSS_BLIND_ID
+from defs import CardEnhancement, Edition, HandType, NO_BOSS_BLIND_ID, NUM_RANKS
 from engine import Card, GameSnapshot, Joker
+
+
+class SnapshotGenerateOption(Enum):
+    """How to pick the five \"feature\" cards when building a structured demo hand."""
+
+    FLUSH_IN_HAND = auto()
+    STRAIGHT_IN_HAND = auto()
+
 
 # ---------------------------------------------------------------------------
 # Demo snapshot generation (not used by load/save)
 # ---------------------------------------------------------------------------
 
-TARGET_SCORE = 450
+TARGET_SCORE = 300
 PLAY_REMAINING = 4
-DISCARD_REMAINING = 3
+DISCARD_REMAINING = 4
 PLAYER_HAND_SIZE = 8
 FULL_DECK_SIZE = 52
-DEMO_SNAPSHOT_COUNT = 100
+DEMO_SNAPSHOT_COUNT = 20
 
 _PLAIN_ENHANCEMENT = int(CardEnhancement.NONE)
 _PLAIN_EDITION = int(Edition.BASE)
@@ -54,22 +65,63 @@ def _plain_card(card_id: int) -> Card:
     return Card(card_id, _PLAIN_ENHANCEMENT, _PLAIN_EDITION)
 
 
-def generate_snapshot() -> GameSnapshot:
-    """Return one full ``GameSnapshot`` compatible with :func:`dict_to_snapshot` / JSON I/O.
+def _five_card_ids(option: SnapshotGenerateOption) -> List[int]:
+    if option is SnapshotGenerateOption.FLUSH_IN_HAND:
+        suit = random.randrange(4)
+        ranks = random.sample(range(NUM_RANKS), 5)
+        return [suit * NUM_RANKS + r for r in ranks]
+    if option is SnapshotGenerateOption.STRAIGHT_IN_HAND:
+        start = random.randrange(0, NUM_RANKS - 3)
+        if start < 9:
+            ranks = list(range(start, start + 5))
+        else:
+            ranks = [9, 10, 11, 12, 0]
+        return [random.randrange(4) * NUM_RANKS + r for r in ranks]
+    raise ValueError(f"unknown snapshot generate option: {option!r}")
 
-    Shuffles card ids ``0 .. FULL_DECK_SIZE - 1``, deals ``PLAYER_HAND_SIZE`` into ``hand``,
-    remainder into ``deck``. Fixed combat fields: ``TARGET_SCORE``, ``PLAY_REMAINING``,
-    ``DISCARD_REMAINING``, ``NO_BOSS_BLIND_ID``, empty jokers, plain cards only.
-    Each ``HandType`` level is 1 with probability 0.9 else 2 (independent).
-    """
-    ids = list(range(FULL_DECK_SIZE))
-    random.shuffle(ids)
-    hand = [_plain_card(cid) for cid in ids[:PLAYER_HAND_SIZE]]
-    deck = [_plain_card(cid) for cid in ids[PLAYER_HAND_SIZE:]]
-    hand_levels_by_type = {
+
+def _hand_deck_from_feature_ids(five_ids: List[int]) -> Tuple[List[Card], List[Card]]:
+    pool = set(range(FULL_DECK_SIZE)) - set(five_ids)
+    extra = random.sample(sorted(pool), PLAYER_HAND_SIZE - 5)
+    hand_ids = list(five_ids) + extra
+    random.shuffle(hand_ids)
+    deck_ids = list(pool - set(extra))
+    random.shuffle(deck_ids)
+    return [_plain_card(i) for i in hand_ids], [_plain_card(i) for i in deck_ids]
+
+
+def _random_hand_levels() -> dict[int, int]:
+    return {
         int(hand_type): random.choices([1, 2], weights=[9, 1], k=1)[0]
         for hand_type in HandType
     }
+
+
+def generate_snapshot(
+    *, option: SnapshotGenerateOption | None = None
+) -> GameSnapshot:
+    """Return one full ``GameSnapshot`` compatible with :func:`dict_to_snapshot` / JSON I/O.
+
+    With ``option is None``, shuffles card ids ``0 .. FULL_DECK_SIZE - 1``, deals
+    ``PLAYER_HAND_SIZE`` into ``hand``, remainder into ``deck``.
+
+    With ``option`` set to :class:`SnapshotGenerateOption`, builds a hand that **contains**
+    five cards forming that poker shape (flush or straight); the other three hand cards
+    and the 44-card draw pile are random subject to a full-deck partition. Hand card
+    order is shuffled.
+
+    Fixed combat fields: ``TARGET_SCORE``, ``PLAY_REMAINING``, ``DISCARD_REMAINING``,
+    ``NO_BOSS_BLIND_ID``, empty jokers, plain cards only. Each ``HandType`` level is 1
+    with probability 0.9 else 2 (independent).
+    """
+    if option is None:
+        ids = list(range(FULL_DECK_SIZE))
+        random.shuffle(ids)
+        hand = [_plain_card(cid) for cid in ids[:PLAYER_HAND_SIZE]]
+        deck = [_plain_card(cid) for cid in ids[PLAYER_HAND_SIZE:]]
+    else:
+        hand, deck = _hand_deck_from_feature_ids(_five_card_ids(option))
+    hand_levels_by_type = _random_hand_levels()
     return GameSnapshot(
         target_score=TARGET_SCORE,
         current_score=0,
@@ -84,9 +136,11 @@ def generate_snapshot() -> GameSnapshot:
     )
 
 
-def generate_snapshots(count: int) -> List[GameSnapshot]:
+def generate_snapshots(
+    count: int, *, option: SnapshotGenerateOption | None = None
+) -> List[GameSnapshot]:
     """Return ``count`` independent :func:`generate_snapshot` results (one JSON object each when saved)."""
-    return [generate_snapshot() for _ in range(count)]
+    return [generate_snapshot(option=option) for _ in range(count)]
 
 
 # ---------------------------------------------------------------------------
@@ -261,9 +315,11 @@ def load_snapshot_pool_from_json_dir(
 
 
 if __name__ == "__main__":
-    snapshots = generate_snapshots(DEMO_SNAPSHOT_COUNT)
+    option: SnapshotGenerateOption | None = SnapshotGenerateOption.FLUSH_IN_HAND
+    snapshots = generate_snapshots(DEMO_SNAPSHOT_COUNT, option=option)
+    name_suffix = f"{option.name.lower()}_" if option is not None else ""
     out_dir = Path("temp/snapshots_out")
     out_dir.mkdir(exist_ok=True)
     for i, s in enumerate(snapshots):
-        save_snapshot(out_dir / f"{i}.json", s)
+        save_snapshot(out_dir / f"{name_suffix}{i}.json", s)
     print(f"Saved {len(snapshots)} snapshots under {out_dir}/")
