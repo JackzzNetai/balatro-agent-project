@@ -11,7 +11,7 @@ from dataclasses import dataclass
 @dataclass
 class PPOConfig:
     # Parallelism
-    num_envs: int = 64
+    num_envs: int = 128
     rollout_steps: int = 16
     # PPO
     lr: float = 6e-5
