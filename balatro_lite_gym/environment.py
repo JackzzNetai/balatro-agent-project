@@ -375,7 +375,7 @@ class BalatroEnv(Env):
         snapshot: GameSnapshot,
         *,
         gamma_discard: float = 0.999,
-        gamma_play: float = 0.5,
+        gamma_play: float = 0.8,
     ) -> None:
         super().__init__()
         self.observation_space = build_observation_space()
