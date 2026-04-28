@@ -453,9 +453,10 @@ class BalatroEnv(Env):
         2. **Suit focus:** fewest distinct suits (greedy by suit frequency).
         3. **Straight:** strongest wiki straight if present; else term omitted.
 
-        Φ is ``5 * log10(raw)`` where ``raw`` is the maximum hypothetical play score
-        plus ``snapshot.current_score`` (straight omitted when absent). Requires
-        ``raw > 0`` (``log10`` domain).
+        Φ is ``log10(raw)`` where ``raw`` is ``max(hypothetical scores) +
+        snapshot.current_score``. Hypothetical scores are one each for the rank- and
+        suit-focused multisets, plus the streak multiset when present (straight term
+        omitted when no streak). Requires ``raw > 0`` (``log10`` domain).
         """
         if not snapshot.hand:
             return 0.0
